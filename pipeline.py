@@ -47,8 +47,7 @@ class RunNerFacto:
                f"--output-dir {self.model_dir} "
                f"--timestamp '' "
                f"--method-name '' "
-               f" --vis tensorboard "
-               )
+               f" --vis tensorboard ")
         CONSOLE.print(f"Running nerfacto on {self.data} to {self.model_dir}")
         run_command(cmd)
 
@@ -72,7 +71,7 @@ class ExtractPCD:
         raise FileNotFoundError()
 
 
-def main(video_path: Path, output_dir: Path):
+def main(video_path: Path, output_dir: Path, remove_tmp: bool = False):
     pseudo_id = str(uuid4())[:6]
     data_output_dir = Path(f"/tmp/data/{pseudo_id}")
     model_output_dir = Path(f"/tmp/model/{pseudo_id}")
@@ -85,6 +84,12 @@ def main(video_path: Path, output_dir: Path):
 
     extract_pcd = ExtractPCD(model_output_dir, output_dir)
     extract_pcd.main()
+    if remove_tmp:
+        CONSOLE.print(f"remove temporal data folder {data_output_dir}")
+        data_output_dir.rmdir()
+
+        CONSOLE.print(f"remove temporal model folder {data_output_dir}")
+        model_output_dir.rmdir()
 
 
 def entrypoint():
