@@ -1,4 +1,5 @@
 import os
+import shutil
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -86,10 +87,10 @@ def main(video_path: Path, output_dir: Path, remove_tmp: bool = False):
     extract_pcd.main()
     if remove_tmp:
         CONSOLE.print(f"remove temporal data folder {data_output_dir}")
-        data_output_dir.rmdir()
+        shutil.rmtree(data_output_dir, ignore_errors=True)
 
-        CONSOLE.print(f"remove temporal model folder {data_output_dir}")
-        model_output_dir.rmdir()
+        CONSOLE.print(f"remove temporal model folder {model_output_dir}")
+        shutil.rmtree(model_output_dir, ignore_errors=True)
 
 
 def entrypoint():
