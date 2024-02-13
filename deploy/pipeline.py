@@ -61,7 +61,8 @@ class ExtractPCD:
     def main(self):
         cmd = (f"ns-export pointcloud "
                f"--load-config {self.find_config_file()} "
-               f"--output-dir {self.output_dir}")
+               f"--output-dir {self.output_dir} "
+               f"--normal-method open3d")
         run_command(cmd)
 
     def find_config_file(self):
