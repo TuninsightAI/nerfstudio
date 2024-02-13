@@ -46,7 +46,6 @@ class RunNerFacto:
                f"--data {self.data}  "
                f"--output-dir {self.model_dir} "
                f"--timestamp '' "
-               f"--method-name 'exp' "
                f" --vis tensorboard ")
         CONSOLE.print(f"Running nerfacto on {self.data} to {self.model_dir}")
         CONSOLE.print(cmd)
@@ -75,7 +74,7 @@ class ExtractPCD:
 def main(video_path: Path, output_dir: Path, remove_tmp: bool = False):
     pseudo_id = str(uuid4())[:6]
     data_output_dir = Path(f"/tmp/data/{pseudo_id}")
-    model_output_dir = Path(f"/tmp/model/{pseudo_id}")
+    model_output_dir = Path(f"/tmp/model/")
 
     run_colmap = RunColMAP(video_path, Path(data_output_dir))
     run_colmap.main()
@@ -83,14 +82,14 @@ def main(video_path: Path, output_dir: Path, remove_tmp: bool = False):
     run_nerfacto = RunNerFacto(data_output_dir, model_output_dir)
     run_nerfacto.main()
 
-    extract_pcd = ExtractPCD(model_output_dir, output_dir)
+    extract_pcd = ExtractPCD(model_output_dir / pseudo_id, output_dir)
     extract_pcd.main()
     if remove_tmp:
         CONSOLE.print(f"remove temporal data folder {data_output_dir}")
         shutil.rmtree(data_output_dir, ignore_errors=True)
 
-        CONSOLE.print(f"remove temporal model folder {model_output_dir}")
-        shutil.rmtree(model_output_dir, ignore_errors=True)
+        CONSOLE.print(f"remove temporal model folder {model_output_dir / pseudo_id}")
+        shutil.rmtree(model_output_dir / pseudo_id, ignore_errors=True)
 
 
 def entrypoint():
