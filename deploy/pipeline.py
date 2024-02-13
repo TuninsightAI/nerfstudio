@@ -72,7 +72,7 @@ class ExtractPCD:
         raise FileNotFoundError()
 
 
-def main(video_path: Path, output_dir: Path, remove_tmp: bool = False):
+def main(video_path: Path, output_dir: Path, remove_tmp: bool = True):
     pseudo_id = str(uuid4())[:6]
     data_output_dir = Path(f"/tmp/data/{pseudo_id}")
     model_output_dir = Path(f"/tmp/model/")
