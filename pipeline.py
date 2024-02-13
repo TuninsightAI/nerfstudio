@@ -1,4 +1,3 @@
-import os
 import shutil
 from dataclasses import dataclass
 from functools import partial
@@ -47,9 +46,11 @@ class RunNerFacto:
                f"--data {self.data}  "
                f"--output-dir {self.model_dir} "
                f"--timestamp '' "
-               f"--method-name '' "
+               f"--method-name 'exp' "
                f" --vis tensorboard ")
         CONSOLE.print(f"Running nerfacto on {self.data} to {self.model_dir}")
+        CONSOLE.print(cmd)
+
         run_command(cmd)
 
 
@@ -65,9 +66,8 @@ class ExtractPCD:
         run_command(cmd)
 
     def find_config_file(self):
-        for root, dirs, files in os.walk(self.model_dir):
-            if "config.yml" in files:
-                return Path(root) / "config.yml"
+        for config_file in self.model_dir.rglob("**/config.yml"):
+            return config_file.as_posix()
 
         raise FileNotFoundError()
 
