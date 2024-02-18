@@ -46,7 +46,8 @@ class RunNerFacto:
                f"--data {self.data}  "
                f"--output-dir {self.model_dir} "
                f"--timestamp '' "
-               f" --vis tensorboard ")
+               f" --vis tensorboard "
+               f" nerfstudio-data --center-method focus ")
         CONSOLE.print(f"Running nerfacto on {self.data} to {self.model_dir}")
         CONSOLE.print(cmd)
 
