@@ -61,12 +61,14 @@ class RunNerFacto:
 class ExtractPCD:
     model_dir: Path
     output_dir: Path
+    num_points: int = 1000000
 
     def main(self):
         cmd = (f"ns-export pointcloud "
                f"--load-config {self.find_config_file()} "
                f"--output-dir {self.output_dir} "
-               f"--normal-method open3d")
+               f"--normal-method open3d  "
+               f"--num-points {self.num_points}")
         run_command(cmd)
 
     def find_config_file(self):
@@ -77,7 +79,7 @@ class ExtractPCD:
 
 
 def main(video_path: Path, output_dir: Path, remove_tmp: bool = True,
-         center_method: typing.Literal["poses", "focus"] = "focus"):
+         center_method: typing.Literal["poses", "focus"] = "focus", num_points: int = 1000000):
     pseudo_id = str(uuid4())[:6]
     data_output_dir = Path(f"/tmp/data/{pseudo_id}")
     model_output_dir = Path(f"/tmp/model/")
@@ -88,7 +90,7 @@ def main(video_path: Path, output_dir: Path, remove_tmp: bool = True,
     run_nerfacto = RunNerFacto(data_output_dir, model_output_dir, center_method)
     run_nerfacto.main()
 
-    extract_pcd = ExtractPCD(model_output_dir / pseudo_id, output_dir)
+    extract_pcd = ExtractPCD(model_output_dir / pseudo_id, output_dir, num_points=num_points)
     extract_pcd.main()
     if remove_tmp:
         CONSOLE.print(f"remove temporal data folder {data_output_dir}")
