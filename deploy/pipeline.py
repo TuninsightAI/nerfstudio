@@ -1,4 +1,5 @@
 import shutil
+import typing
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -36,10 +37,12 @@ class RunColMAP:
 class RunNerFacto:
     data: Path
     model_dir: Path
+    center_method: typing.Literal["poses", "focus"]
 
     def __post_init__(self):
         """make sure that data path exists and if model_dir is not there, create it."""
         assert self.data.exists(), f"Data path {self.data} does not exist."
+        CONSOLE.print(self)
 
     def main(self):
         cmd = (f"ns-train nerfacto "
@@ -47,7 +50,7 @@ class RunNerFacto:
                f"--output-dir {self.model_dir} "
                f"--timestamp '' "
                f" --vis tensorboard "
-               f" nerfstudio-data --center-method focus ")
+               f" nerfstudio-data --center-method {self.center_method} ")
         CONSOLE.print(f"Running nerfacto on {self.data} to {self.model_dir}")
         CONSOLE.print(cmd)
 
@@ -73,7 +76,8 @@ class ExtractPCD:
         raise FileNotFoundError()
 
 
-def main(video_path: Path, output_dir: Path, remove_tmp: bool = True):
+def main(video_path: Path, output_dir: Path, remove_tmp: bool = True,
+         center_method: typing.Literal["poses", "focus"] = "focus"):
     pseudo_id = str(uuid4())[:6]
     data_output_dir = Path(f"/tmp/data/{pseudo_id}")
     model_output_dir = Path(f"/tmp/model/")
@@ -81,7 +85,7 @@ def main(video_path: Path, output_dir: Path, remove_tmp: bool = True):
     run_colmap = RunColMAP(video_path, Path(data_output_dir))
     run_colmap.main()
 
-    run_nerfacto = RunNerFacto(data_output_dir, model_output_dir)
+    run_nerfacto = RunNerFacto(data_output_dir, model_output_dir, center_method)
     run_nerfacto.main()
 
     extract_pcd = ExtractPCD(model_output_dir / pseudo_id, output_dir)
