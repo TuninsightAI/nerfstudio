@@ -18,15 +18,18 @@ NeRF implementation that combines many recent advancements.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Tuple, Type
+from typing import Dict, List, Literal, Tuple, Type, Optional
 
 import numpy as np
 import torch
 from torch.nn import Parameter
 
 from nerfstudio.cameras.camera_optimizers import CameraOptimizer, CameraOptimizerConfig
+from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle, RaySamples
+from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
@@ -429,3 +432,19 @@ class NerfactoModel(Model):
             images_dict[key] = prop_depth_i
 
         return metrics_dict, images_dict
+
+    @torch.no_grad()
+    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None,
+                               camera_correction: bool = False) -> Dict[str, torch.Tensor]:
+        """
+        added camera correction if rendering with training images.
+        :param camera:
+        :param obb_box:
+        :param camera_correction:
+        :return:
+        """
+        if camera_correction:
+            assert camera.metadata is not None
+            camera = deepcopy(camera)
+            camera.camera_to_worlds = self.camera_optimizer.apply_to_camera(camera)
+        return super().get_outputs_for_camera(camera, obb_box)

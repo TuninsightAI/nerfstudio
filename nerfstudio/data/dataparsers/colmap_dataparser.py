@@ -100,7 +100,10 @@ class ColmapDataParserConfig(DataParserConfig):
     """Whether to load the 3D points from the colmap reconstruction. This is helpful for Gaussian splatting and
     generally unused otherwise, but it's typically harmless so we default to True."""
     max_2D_matches_per_3D_point: int = 0
-    """Maximum number of 2D matches per 3D point. If set to -1, all 2D matches are loaded. If set to 0, no 2D matches are loaded."""
+    """Maximum number of 2D matches per 3D point. If set to -1, all 2D matches are loaded. 
+    If set to 0, no 2D matches are loaded."""
+    sort_by: Literal["id", "filename"] = "filename"
+    """sort the images by id or filename. This is useful when the images are not sorted by id in the colmap model."""
 
 
 class ColmapDataParser(DataParser):
@@ -189,8 +192,7 @@ class ColmapDataParser(DataParser):
             else:
                 camera_model = frame["camera_model"]
 
-        out = {}
-        out["frames"] = frames
+        out = {"frames": frames}
         if self.config.assume_colmap_world_coordinate_convention:
             # world coordinate transform: map colmap gravity guess (-y) to nerfstudio convention (+z)
             applied_transform = np.eye(4)[:3, :]
@@ -203,9 +205,9 @@ class ColmapDataParser(DataParser):
 
     def _get_image_indices(self, image_filenames, split):
         has_split_files_spec = (
-            (self.config.data / "train_list.txt").exists()
-            or (self.config.data / "test_list.txt").exists()
-            or (self.config.data / "validation_list.txt").exists()
+                (self.config.data / "train_list.txt").exists()
+                or (self.config.data / "test_list.txt").exists()
+                or (self.config.data / "validation_list.txt").exists()
         )
         if (self.config.data / f"{split}_list.txt").exists():
             CONSOLE.log(f"Using {split}_list.txt to get indices for split {split}.")
@@ -255,6 +257,9 @@ class ColmapDataParser(DataParser):
 
         meta = self._get_all_images_and_cameras(colmap_path)
         camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
+
+        if self.config.sort_by == "filename":
+            meta["frames"] = sorted(meta["frames"], key=lambda x: x["file_path"])
 
         image_filenames = []
         mask_filenames = []

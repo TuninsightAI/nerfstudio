@@ -67,9 +67,8 @@ class CameraOptimizerConfig(InstantiateConfig):
             from nerfstudio.utils.rich_utils import CONSOLE
 
             CONSOLE.print(
-                "\noptimizer is no longer specified in the CameraOptimizerConfig, it is now defined with the rest of the param groups inside the config file under the name 'camera_opt'\n",
-                style="bold yellow",
-            )
+                "\noptimizer is no longer specified in the CameraOptimizerConfig, it is now defined with the rest of "
+                "the param groups inside the config file under the name 'camera_opt'\n", style="bold yellow", )
             warnings.warn("above message coming from", FutureWarning, stacklevel=3)
 
         if self.scheduler is not None:
@@ -78,9 +77,8 @@ class CameraOptimizerConfig(InstantiateConfig):
             from nerfstudio.utils.rich_utils import CONSOLE
 
             CONSOLE.print(
-                "\nscheduler is no longer specified in the CameraOptimizerConfig, it is now defined with the rest of the param groups inside the config file under the name 'camera_opt'\n",
-                style="bold yellow",
-            )
+                "\nscheduler is no longer specified in the CameraOptimizerConfig, it is now defined with the rest "
+                "of the param groups inside the config file under the name 'camera_opt'\n", style="bold yellow", )
             warnings.warn("above message coming from", FutureWarning, stacklevel=3)
 
 
