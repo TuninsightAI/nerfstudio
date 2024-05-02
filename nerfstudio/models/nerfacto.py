@@ -49,6 +49,7 @@ from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.model_components.shaders import NormalsShader
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import colormaps
+from nerfstudio.utils.yiq import YIQLoss
 
 
 @dataclass
@@ -133,6 +134,8 @@ class NerfactoModelConfig(ModelConfig):
     """Average initial density output from MLP. """
     camera_optimizer: CameraOptimizerConfig = field(default_factory=lambda: CameraOptimizerConfig(mode="SO3xR3"))
     """Config of the camera optimizer to use"""
+    rbg_loss: Literal["mse", "yiq"] = "mse"
+    """ rgb loss used for photometric supervision """
 
 
 class NerfactoModel(Model):
@@ -243,7 +246,7 @@ class NerfactoModel(Model):
         self.normals_shader = NormalsShader()
 
         # losses
-        self.rgb_loss = MSELoss()
+        self.rgb_loss = MSELoss() if self.config.rbg_loss == "mse" else YIQLoss((0.2, 1.0, 1.0))
         self.step = 0
         # metrics
         from torchmetrics.functional import structural_similarity_index_measure
