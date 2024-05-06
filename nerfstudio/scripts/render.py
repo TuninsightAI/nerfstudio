@@ -721,6 +721,9 @@ class DatasetRender(BaseRender):
     apply_appearence_embedding_on_train: bool = False
     """ Whether to apply appearence embedding on the training images. """
 
+    correct_principal_point: bool = False
+    disable_distortion: bool = False
+
     def main(self):
         config: TrainerConfig
 
@@ -789,14 +792,22 @@ class DatasetRender(BaseRender):
                 TimeRemainingColumn(elapsed_when_finished=False, compact=False),
                 TimeElapsedColumn(),
             ) as progress:
+                corrected_poses = []
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
-                        camera.metadata = dict(cam_idx=camera_idx)
+                        image_name = dataparser_outputs.image_filenames[camera_idx].relative_to(images_root)
+                        camera.metadata = dict(cam_idx=camera_idx, image_name=image_name)
+
                         sig_keys = signature(pipeline.model.get_outputs_for_camera).parameters.keys()
-                        camera_correction_kwargs = {}
+                        camera_correction_kwargs = {"disable_distortion": self.disable_distortion}
                         if "camera_correction" in sig_keys:
                             camera_correction_kwargs["camera_correction"] = self.apply_camera_correction
+                        if self.correct_principal_point:
+                            # correct the camera
+                            camera.cx = camera.width / 2
+                            camera.cy = camera.height / 2
                         outputs = pipeline.model.get_outputs_for_camera(camera, **camera_correction_kwargs)
+                        corrected_poses.append(camera)
 
                     gt_batch = batch.copy()
                     gt_batch["rgb"] = gt_batch.pop("image")
@@ -887,6 +898,8 @@ class DatasetRender(BaseRender):
                             )
                         else:
                             raise ValueError(f"Unknown image format {self.image_format}")
+        torch.save(corrected_poses, self.output_path / split / "corrected_poses.pth")
+
 
         table = Table(
             title=None,
