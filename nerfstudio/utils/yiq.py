@@ -35,7 +35,7 @@ def yiq_color_space_loss(rgb_img1: Float[Tensor, "*batch 3"], rg2_img2: Float[Te
     hsv1, hsv2 = _rgb_to_yiq(rgb_img1), _rgb_to_yiq(rg2_img2)
     weight = torch.zeros(1, 3, device=torch.device("cuda"), dtype=torch.float)
     weight[0, :] = torch.Tensor(channel_weight).cuda().type(torch.float)
-    return (torch.abs(hsv1 - hsv2) * weight).mean()
+    return (torch.abs(hsv1 - hsv2) ** 1 * weight).mean()
 
 
 class YIQLoss(nn.Module):

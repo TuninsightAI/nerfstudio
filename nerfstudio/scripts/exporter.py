@@ -40,6 +40,7 @@ from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatama
 from nerfstudio.data.datamanagers.parallel_datamanager import ParallelDataManager
 from nerfstudio.data.datamanagers.random_cameras_datamanager import RandomCamerasDataManager
 from nerfstudio.data.scene_box import OrientedBox
+from nerfstudio.data.utils.colmap_parsing_utils import read_points3D_binary, read_points3D_text
 from nerfstudio.exporter import texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import collect_camera_poses, generate_point_cloud, get_mesh_from_filename
 from nerfstudio.exporter.marching_cubes import generate_mesh_with_multires_marching_cubes
@@ -88,6 +89,41 @@ def validate_pipeline(normal_method: str, normal_output_name: str, pipeline: Pip
             CONSOLE.print("[bold yellow]Warning: Or change --normal-method")
             CONSOLE.print("[bold yellow]Exiting early.")
             sys.exit(1)
+
+
+@dataclass
+class ExportPointCloudfromColmap:
+    point3d_file: Path
+    save_dir: Path
+    max_norm: float | None = 100.0
+
+    def __post_init__(self):
+        assert self.point3d_file.exists(), f"File {self.point3d_file} does not exist."
+        assert (self.point3d_file.suffix == ".txt" or self.point3d_file.suffix == ".bin"), \
+            f"File {self.point3d_file} is not a .txt or .bin file."
+        self.save_dir.mkdir(exist_ok=True, parents=True)
+
+    def main(self) -> None:
+        if self.point3d_file.suffix == ".txt":
+            points3D = read_points3D_text(self.point3d_file)
+        elif self.point3d_file.suffix == ".bin":
+            points3D = read_points3D_binary(self.point3d_file)
+        else:
+            raise ValueError(f"File {self.point3d_file} is not a .txt or .bin file.")
+
+        points3D_xyz = torch.from_numpy(np.array([p.xyz for p in points3D.values()], dtype=np.float32))
+
+        # Load point colours
+        points3D_rgb = torch.from_numpy(np.array([p.rgb for p in points3D.values()], dtype=np.uint8))
+
+        if self.max_norm is not None:
+            points3D_rgb = points3D_rgb[torch.norm(points3D_xyz, dim=-1) < self.max_norm]
+            points3D_xyz = points3D_xyz[torch.norm(points3D_xyz, dim=-1) < self.max_norm]
+
+        o3d_pcd = o3d.geometry.PointCloud()
+        o3d_pcd.points = o3d.utility.Vector3dVector(points3D_xyz.numpy())
+        o3d_pcd.colors = o3d.utility.Vector3dVector(points3D_rgb.numpy() / 255.0)
+        o3d.io.write_point_cloud(str(self.save_dir / "point3d.ply"), o3d_pcd)
 
 
 @dataclass
@@ -628,6 +664,7 @@ Commands = tyro.conf.FlagConversionOff[
         Annotated[ExportMarchingCubesMesh, tyro.conf.subcommand(name="marching-cubes")],
         Annotated[ExportCameraPoses, tyro.conf.subcommand(name="cameras")],
         Annotated[ExportGaussianSplat, tyro.conf.subcommand(name="gaussian-splat")],
+        Annotated[ExportPointCloudfromColmap, tyro.conf.subcommand(name="pointcloud-colmap")],
     ]
 ]
 

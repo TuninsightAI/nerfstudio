@@ -266,7 +266,7 @@ class NerfactoModel(Model):
         return param_groups
 
     def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
+            self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
         callbacks = []
         if self.config.use_proposal_weight_anneal:
@@ -397,7 +397,7 @@ class NerfactoModel(Model):
         return loss_dict
 
     def get_image_metrics_and_images(
-        self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
+            self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
         gt_rgb = batch["image"].to(self.device)
         predicted_rgb = outputs["rgb"]  # Blended with background (black if random background)
@@ -438,7 +438,7 @@ class NerfactoModel(Model):
 
     @torch.no_grad()
     def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None,
-                               camera_correction: bool = False) -> Dict[str, torch.Tensor]:
+                               camera_correction: bool = False, disable_distortion=False) -> Dict[str, torch.Tensor]:
         """
         added camera correction if rendering with training images.
         :param camera:
@@ -450,4 +450,4 @@ class NerfactoModel(Model):
             assert camera.metadata is not None
             camera = deepcopy(camera)
             camera.camera_to_worlds = self.camera_optimizer.apply_to_camera(camera)
-        return super().get_outputs_for_camera(camera, obb_box)
+        return super().get_outputs_for_camera(camera, obb_box, disable_distortion=disable_distortion)

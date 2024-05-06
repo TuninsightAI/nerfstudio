@@ -155,7 +155,9 @@ def feature_extraction(
         f"--image_path {image_folder}",
         f"--ImageReader.camera_model  PINHOLE",
         f"--SiftExtraction.use_gpu 1",
-        f"--SiftExtraction.domain_size_pooling 1 ",
+        # f"--SiftExtraction.domain_size_pooling 1 ",
+        # f"--ImageReader.single_camera_per_folder 1",
+        # "--SiftExtraction.estimate_affine_shape 1"
     ]
     if camera_mask_folder is not None:
         feature_extractor_cmd.append(
@@ -183,6 +185,7 @@ def feature_matching(
         f"{colmap_command} {matching_method}_matcher",
         f"--database_path {database_path}",
         f"--SiftMatching.use_gpu 1",
+        # f"--SiftMatching.guided_matching 1"
     ]
     if matching_method in ["vocab_tree", "sequential"]:
         vocab_tree_filename = get_vocab_tree()
@@ -196,8 +199,7 @@ def feature_matching(
             )
     elif matching_method == "spatial":
         feature_matcher_cmd.append(f"--SpatialMatching.is_gps 0")
-    else:
-        raise ValueError(f"Unknown matching method {matching_method}")
+
     feature_matcher_cmd = " ".join(feature_matcher_cmd)
     rich.print(feature_matcher_cmd)
     with status(
