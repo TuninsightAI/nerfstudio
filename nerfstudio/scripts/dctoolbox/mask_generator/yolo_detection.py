@@ -1,10 +1,11 @@
-import argparse
-import os
-from contextlib import redirect_stdout, contextmanager
-from pathlib import Path
-
 import numpy as np
+import os
+import typing as t
+import tyro
 from PIL import Image
+from contextlib import redirect_stdout, contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 from tqdm import tqdm
 from ultralytics import YOLO
 
@@ -45,35 +46,33 @@ def predict_given_image_path(model, img_path: Path, margin=0.2) -> np.ndarray:
     return mask.astype(np.uint8)
 
 
-def get_args():
-    parser = argparse.ArgumentParser("Prepare masks for dataset")
-    parser.add_argument(
-        "--image-dir", type=str, required=True, help="Path to the Image folder"
-    )
-    parser.add_argument(
-        "--mask-dir", type=str, required=True, help="Path to the mask folder"
-    )
-    return parser.parse_args()
+@dataclass
+class YoloMaskGeneratorConfig:
+    image_dir: Path
+    """ Path to the Image folder """
 
+    mask_dir: Path
+    """ Path to the mask folder"""
 
-def main():
-    args = get_args()
-    image_dir = Path(args.image_dir)
-    assert image_dir.exists(), f"Image directory {image_dir} does not exist"
-    save_dir = Path(args.mask_dir)
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    extension: t.Literal[".png", ".jpg", ".jpeg"] = ".jpg"
 
-    # Load a model
-    model = YOLO(
-        "/home/jizong/Workspace/dConstruct/taichi-splatting/checkpoint/yolov8x.pt"
-    )  # load a pretrained model (recommended for training)
+    checkpoint_path: Path = Path("/home/jizong/Workspace/dConstruct/taichi-splatting/checkpoint/yolov8x.pt")
 
-    for f in tqdm(sorted(image_dir.rglob("*.png"))):
-        mask = predict_given_image_path(model, f)
-        Image.fromarray(mask).save(
-            Path(args.mask_dir, f.stem + ".png").as_posix(),
-        )
+    def main(self):
+        assert self.image_dir.exists(), f"Image directory {self.image_dir} does not exist"
+        Path(self.mask_dir).mkdir(parents=True, exist_ok=True)
+
+        # Load a model
+        model = YOLO(
+            self.checkpoint_path.as_posix(),
+        )  # load a pretrained model (recommended for training)
+
+        for f in tqdm(sorted(self.image_dir.rglob(f"*{self.extension}")), desc="Generating masks"):
+            mask = predict_given_image_path(model, f)
+            Image.fromarray(mask).save(
+                Path(self.mask_dir, f.stem + ".png").as_posix(),
+            )
 
 
 if __name__ == "__main__":
-    main()
+    tyro.cli(YoloMaskGeneratorConfig).main()
