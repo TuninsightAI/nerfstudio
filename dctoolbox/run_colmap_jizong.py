@@ -257,12 +257,12 @@ def bundle_adjustment(
 def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False):
     assert_dataset_path(database_path)
     model_alignment_cmd = [
-        "colmap model_alignment",
+        "colmap model_aligner",
         f"--input_path {str(sparse_dir)}",
         f"--output_path {str(sparse_dir)}",
-        f"--dataset_path {str(database_path)}",
+        f"--database_path {str(database_path)}",
         f"--ref_is_gps 0",
-        f"----alignment_type custom",
+        f"--alignment_type custom",
         "--robust_alignment 1",
         "--robust_alignment_max_error 3.0",
     ]
