@@ -16,20 +16,23 @@
 from __future__ import annotations
 
 import math
+import numpy as np
 import sys
+import torch
+from PIL import Image
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import List, Literal, Optional, Type
-
-import numpy as np
-import torch
-from PIL import Image
 from rich.prompt import Confirm
+from typing import List, Literal, Optional, Type
 
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras
-from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
+from nerfstudio.data.dataparsers.base_dataparser import (
+    DataParser,
+    DataParserConfig,
+    DataparserOutputs,
+)
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.data.utils import colmap_parsing_utils as colmap_utils
 from nerfstudio.data.utils.dataparsers_utils import (
@@ -138,10 +141,14 @@ class ColmapDataParser(DataParser):
             cam_id_to_camera = colmap_utils.read_cameras_text(recon_dir / "cameras.txt")
             im_id_to_image = colmap_utils.read_images_text(recon_dir / "images.txt")
         elif (recon_dir / "cameras.bin").exists():
-            cam_id_to_camera = colmap_utils.read_cameras_binary(recon_dir / "cameras.bin")
+            cam_id_to_camera = colmap_utils.read_cameras_binary(
+                recon_dir / "cameras.bin"
+            )
             im_id_to_image = colmap_utils.read_images_binary(recon_dir / "images.bin")
         else:
-            raise ValueError(f"Could not find cameras.txt or cameras.bin in {recon_dir}")
+            raise ValueError(
+                f"Could not find cameras.txt or cameras.bin in {recon_dir}"
+            )
 
         cameras = {}
         frames = []
@@ -173,22 +180,30 @@ class ColmapDataParser(DataParser):
                 c2w[2, :] *= -1
 
             frame = {
-                "file_path": (self.config.data / self.config.images_path / im_data.name).as_posix(),
+                "file_path": (
+                    self.config.data / self.config.images_path / im_data.name
+                ).as_posix(),
                 "transform_matrix": c2w,
                 "colmap_im_id": im_id,
             }
             frame.update(cameras[im_data.camera_id])
             if self.config.masks_path is not None:
                 frame["mask_path"] = (
-                    (self.config.data / self.config.masks_path / im_data.name).with_suffix(".png").as_posix()
+                    (self.config.data / self.config.masks_path / im_data.name)
+                    .with_suffix(".png")
+                    .as_posix()
                 )
             if self.config.depths_path is not None:
                 frame["depth_path"] = (
-                    (self.config.data / self.config.depths_path / im_data.name).with_suffix(".png").as_posix()
+                    (self.config.data / self.config.depths_path / im_data.name)
+                    .with_suffix(".png")
+                    .as_posix()
                 )
             frames.append(frame)
             if camera_model is not None:
-                assert camera_model == frame["camera_model"], "Multiple camera models are not supported"
+                assert (
+                    camera_model == frame["camera_model"]
+                ), "Multiple camera models are not supported"
             else:
                 camera_model = frame["camera_model"]
 
@@ -205,35 +220,47 @@ class ColmapDataParser(DataParser):
 
     def _get_image_indices(self, image_filenames, split):
         has_split_files_spec = (
-                (self.config.data / "train_list.txt").exists()
-                or (self.config.data / "test_list.txt").exists()
-                or (self.config.data / "validation_list.txt").exists()
+            (self.config.data / "train_list.txt").exists()
+            or (self.config.data / "test_list.txt").exists()
+            or (self.config.data / "validation_list.txt").exists()
         )
         if (self.config.data / f"{split}_list.txt").exists():
             CONSOLE.log(f"Using {split}_list.txt to get indices for split {split}.")
-            with (self.config.data / f"{split}_list.txt").open("r", encoding="utf8") as f:
+            with (self.config.data / f"{split}_list.txt").open(
+                "r", encoding="utf8"
+            ) as f:
                 filenames = f.read().splitlines()
             # Validate split first
-            split_filenames = set(self.config.data / self.config.images_path / x for x in filenames)
+            split_filenames = set(
+                self.config.data / self.config.images_path / x for x in filenames
+            )
             unmatched_filenames = split_filenames.difference(image_filenames)
             if unmatched_filenames:
                 raise RuntimeError(
                     f"Some filenames for split {split} were not found: {set(map(str, unmatched_filenames))}."
                 )
 
-            indices = [i for i, path in enumerate(image_filenames) if path in split_filenames]
+            indices = [
+                i for i, path in enumerate(image_filenames) if path in split_filenames
+            ]
             CONSOLE.log(f"[yellow] Dataset is overriding {split}_indices to {indices}")
             indices = np.array(indices, dtype=np.int32)
         elif has_split_files_spec:
-            raise RuntimeError(f"The dataset's list of filenames for split {split} is missing.")
+            raise RuntimeError(
+                f"The dataset's list of filenames for split {split} is missing."
+            )
         else:
             # find train and eval indices based on the eval_mode specified
             if self.config.eval_mode == "fraction":
-                i_train, i_eval = get_train_eval_split_fraction(image_filenames, self.config.train_split_fraction)
+                i_train, i_eval = get_train_eval_split_fraction(
+                    image_filenames, self.config.train_split_fraction
+                )
             elif self.config.eval_mode == "filename":
                 i_train, i_eval = get_train_eval_split_filename(image_filenames)
             elif self.config.eval_mode == "interval":
-                i_train, i_eval = get_train_eval_split_interval(image_filenames, self.config.eval_interval)
+                i_train, i_eval = get_train_eval_split_interval(
+                    image_filenames, self.config.eval_interval
+                )
             elif self.config.eval_mode == "all":
                 CONSOLE.log(
                     "[yellow] Be careful with '--eval-mode=all'. If using camera optimization, the cameras may diverge in the current implementation, giving unpredictable results."
@@ -251,7 +278,9 @@ class ColmapDataParser(DataParser):
         return indices
 
     def _generate_dataparser_outputs(self, split: str = "train", **kwargs):
-        assert self.config.data.exists(), f"Data directory {self.config.data} does not exist."
+        assert (
+            self.config.data.exists()
+        ), f"Data directory {self.config.data} does not exist."
         colmap_path = self.config.data / self.config.colmap_path
         assert colmap_path.exists(), f"Colmap path {colmap_path} does not exist."
 
@@ -299,11 +328,15 @@ class ColmapDataParser(DataParser):
             if "depth_path" in frame:
                 depth_filenames.append(Path(frame["depth_path"]))
 
-        assert len(mask_filenames) == 0 or (len(mask_filenames) == len(image_filenames)), """
+        assert len(mask_filenames) == 0 or (
+            len(mask_filenames) == len(image_filenames)
+        ), """
         Different number of image and mask filenames.
         You should check that mask_path is specified for every frame (or zero frames) in transforms.json.
         """
-        assert len(depth_filenames) == 0 or (len(depth_filenames) == len(image_filenames)), """
+        assert len(depth_filenames) == 0 or (
+            len(depth_filenames) == len(image_filenames)
+        ), """
         Different number of image and depth filenames.
         You should check that depth_file_path is specified for every frame (or zero frames) in transforms.json.
         """
@@ -323,13 +356,22 @@ class ColmapDataParser(DataParser):
 
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         indices = self._get_image_indices(image_filenames, split)
-        image_filenames, mask_filenames, depth_filenames, downscale_factor = self._setup_downscale_factor(
+        (
+            image_filenames,
+            mask_filenames,
+            depth_filenames,
+            downscale_factor,
+        ) = self._setup_downscale_factor(
             image_filenames, mask_filenames, depth_filenames
         )
 
         image_filenames = [image_filenames[i] for i in indices]
-        mask_filenames = [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []
-        depth_filenames = [depth_filenames[i] for i in indices] if len(depth_filenames) > 0 else []
+        mask_filenames = (
+            [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []
+        )
+        depth_filenames = (
+            [depth_filenames[i] for i in indices] if len(depth_filenames) > 0 else []
+        )
 
         idx_tensor = torch.tensor(indices, dtype=torch.long)
         poses = poses[idx_tensor]
@@ -339,7 +381,11 @@ class ColmapDataParser(DataParser):
         aabb_scale = self.config.scene_scale
         scene_box = SceneBox(
             aabb=torch.tensor(
-                [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
+                [
+                    [-aabb_scale, -aabb_scale, -aabb_scale],
+                    [aabb_scale, aabb_scale, aabb_scale],
+                ],
+                dtype=torch.float32,
             )
         )
 
@@ -364,13 +410,20 @@ class ColmapDataParser(DataParser):
         )
 
         cameras.rescale_output_resolution(
-            scaling_factor=1.0 / downscale_factor, scale_rounding_mode=self.config.downscale_rounding_mode
+            scaling_factor=1.0 / downscale_factor,
+            scale_rounding_mode=self.config.downscale_rounding_mode,
         )
 
         if "applied_transform" in meta:
-            applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
+            applied_transform = torch.tensor(
+                meta["applied_transform"], dtype=transform_matrix.dtype
+            )
             transform_matrix = transform_matrix @ torch.cat(
-                [applied_transform, torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype)], 0
+                [
+                    applied_transform,
+                    torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype),
+                ],
+                0,
             )
         if "applied_scale" in meta:
             applied_scale = float(meta["applied_scale"])
@@ -379,7 +432,9 @@ class ColmapDataParser(DataParser):
         metadata = {}
         if self.config.load_3D_points:
             # Load 3D points
-            metadata.update(self._load_3D_points(colmap_path, transform_matrix, scale_factor))
+            metadata.update(
+                self._load_3D_points(colmap_path, transform_matrix, scale_factor)
+            )
 
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
@@ -389,21 +444,33 @@ class ColmapDataParser(DataParser):
             dataparser_scale=scale_factor,
             dataparser_transform=transform_matrix,
             metadata={
-                "depth_filenames": depth_filenames if len(depth_filenames) > 0 else None,
+                "depth_filenames": depth_filenames
+                if len(depth_filenames) > 0
+                else None,
                 "depth_unit_scale_factor": self.config.depth_unit_scale_factor,
                 **metadata,
             },
         )
         return dataparser_outputs
 
-    def _load_3D_points(self, colmap_path: Path, transform_matrix: torch.Tensor, scale_factor: float):
+    def _load_3D_points(
+        self, colmap_path: Path, transform_matrix: torch.Tensor, scale_factor: float
+    ):
         if (colmap_path / "points3D.bin").exists():
-            colmap_points = colmap_utils.read_points3D_binary(colmap_path / "points3D.bin")
+            colmap_points = colmap_utils.read_points3D_binary(
+                colmap_path / "points3D.bin"
+            )
         elif (colmap_path / "points3D.txt").exists():
-            colmap_points = colmap_utils.read_points3D_text(colmap_path / "points3D.txt")
+            colmap_points = colmap_utils.read_points3D_text(
+                colmap_path / "points3D.txt"
+            )
         else:
-            raise ValueError(f"Could not find points3D.txt or points3D.bin in {colmap_path}")
-        points3D = torch.from_numpy(np.array([p.xyz for p in colmap_points.values()], dtype=np.float32))
+            raise ValueError(
+                f"Could not find points3D.txt or points3D.bin in {colmap_path}"
+            )
+        points3D = torch.from_numpy(
+            np.array([p.xyz for p in colmap_points.values()], dtype=np.float32)
+        )
         points3D = (
             torch.cat(
                 (
@@ -417,25 +484,39 @@ class ColmapDataParser(DataParser):
         points3D *= scale_factor
 
         # Load point colours
-        points3D_rgb = torch.from_numpy(np.array([p.rgb for p in colmap_points.values()], dtype=np.uint8))
-        points3D_num_points = torch.tensor([len(p.image_ids) for p in colmap_points.values()], dtype=torch.int64)
+        points3D_rgb = torch.from_numpy(
+            np.array([p.rgb for p in colmap_points.values()], dtype=np.uint8)
+        )
+        points3D_num_points = torch.tensor(
+            [len(p.image_ids) for p in colmap_points.values()], dtype=torch.int64
+        )
         out = {
             "points3D_xyz": points3D,
             "points3D_rgb": points3D_rgb,
-            "points3D_error": torch.from_numpy(np.array([p.error for p in colmap_points.values()], dtype=np.float32)),
+            "points3D_error": torch.from_numpy(
+                np.array([p.error for p in colmap_points.values()], dtype=np.float32)
+            ),
             "points3D_num_points2D": points3D_num_points,
         }
         if self.config.max_2D_matches_per_3D_point != 0:
             if (colmap_path / "images.txt").exists():
-                im_id_to_image = colmap_utils.read_images_text(colmap_path / "images.txt")
+                im_id_to_image = colmap_utils.read_images_text(
+                    colmap_path / "images.txt"
+                )
             elif (colmap_path / "images.bin").exists():
-                im_id_to_image = colmap_utils.read_images_binary(colmap_path / "images.bin")
+                im_id_to_image = colmap_utils.read_images_binary(
+                    colmap_path / "images.bin"
+                )
             else:
-                raise ValueError(f"Could not find images.txt or images.bin in {colmap_path}")
+                raise ValueError(
+                    f"Could not find images.txt or images.bin in {colmap_path}"
+                )
             downscale_factor = self._downscale_factor
             max_num_points = int(torch.max(points3D_num_points).item())
             if self.config.max_2D_matches_per_3D_point > 0:
-                max_num_points = min(max_num_points, self.config.max_2D_matches_per_3D_point)
+                max_num_points = min(
+                    max_num_points, self.config.max_2D_matches_per_3D_point
+                )
             points3D_image_ids = []
             points3D_image_xy = []
             for p in colmap_points.values():
@@ -443,19 +524,40 @@ class ColmapDataParser(DataParser):
                 nxy_ids = np.array(p.point2D_idxs, dtype=np.int32)
                 if self.config.max_2D_matches_per_3D_point != -1:
                     # Randomly sample 2D matches
-                    idxs = np.argsort(p.error)[: self.config.max_2D_matches_per_3D_point]
+                    idxs = np.argsort(p.error)[
+                        : self.config.max_2D_matches_per_3D_point
+                    ]
                     nids = nids[idxs]
                     nxy_ids = nxy_ids[idxs]
-                nxy = [im_id_to_image[im_id].xys[pt_idx] for im_id, pt_idx in zip(nids, nxy_ids)]
+                nxy = [
+                    im_id_to_image[im_id].xys[pt_idx]
+                    for im_id, pt_idx in zip(nids, nxy_ids)
+                ]
                 nxy = torch.from_numpy(np.stack(nxy).astype(np.float32))
                 nids = torch.from_numpy(nids)
                 assert len(nids.shape) == 1
                 assert len(nxy.shape) == 2
                 points3D_image_ids.append(
-                    torch.cat((nids, torch.full((max_num_points - len(nids),), -1, dtype=torch.int64)))
+                    torch.cat(
+                        (
+                            nids,
+                            torch.full(
+                                (max_num_points - len(nids),), -1, dtype=torch.int64
+                            ),
+                        )
+                    )
                 )
                 points3D_image_xy.append(
-                    torch.cat((nxy, torch.full((max_num_points - len(nxy), nxy.shape[-1]), 0, dtype=torch.float32)))
+                    torch.cat(
+                        (
+                            nxy,
+                            torch.full(
+                                (max_num_points - len(nxy), nxy.shape[-1]),
+                                0,
+                                dtype=torch.float32,
+                            ),
+                        )
+                    )
                     / downscale_factor
                 )
             out["points3D_image_ids"] = torch.stack(points3D_image_ids, dim=0)
@@ -470,15 +572,25 @@ class ColmapDataParser(DataParser):
         downscale_rounding_mode: str = "floor",
         nearest_neighbor: bool = False,
     ):
-        def calculate_scaled_size(original_width, original_height, downscale_factor, mode="floor"):
+        def calculate_scaled_size(
+            original_width, original_height, downscale_factor, mode="floor"
+        ):
             if mode == "floor":
-                return math.floor(original_width / downscale_factor), math.floor(original_height / downscale_factor)
+                return math.floor(original_width / downscale_factor), math.floor(
+                    original_height / downscale_factor
+                )
             elif mode == "round":
-                return round(original_width / downscale_factor), round(original_height / downscale_factor)
+                return round(original_width / downscale_factor), round(
+                    original_height / downscale_factor
+                )
             elif mode == "ceil":
-                return math.ceil(original_width / downscale_factor), math.ceil(original_height / downscale_factor)
+                return math.ceil(original_width / downscale_factor), math.ceil(
+                    original_height / downscale_factor
+                )
             else:
-                raise ValueError("Invalid mode. Choose from 'floor', 'round', or 'ceil'.")
+                raise ValueError(
+                    "Invalid mode. Choose from 'floor', 'round', or 'ceil'."
+                )
 
         with status(msg="[bold yellow]Downscaling images...", spinner="growVertical"):
             assert downscale_factor > 1
@@ -486,7 +598,9 @@ class ColmapDataParser(DataParser):
             filepath = next(iter(paths))
             img = Image.open(filepath)
             w, h = img.size
-            w_scaled, h_scaled = calculate_scaled_size(w, h, downscale_factor, downscale_rounding_mode)
+            w_scaled, h_scaled = calculate_scaled_size(
+                w, h, downscale_factor, downscale_rounding_mode
+            )
             # Using %05d ffmpeg commands appears to be unreliable (skips images).
             for path in paths:
                 nn_flag = "" if not nearest_neighbor else ":flags=neighbor"
@@ -503,7 +617,10 @@ class ColmapDataParser(DataParser):
         CONSOLE.log("[bold green]:tada: Done downscaling images.")
 
     def _setup_downscale_factor(
-        self, image_filenames: List[Path], mask_filenames: List[Path], depth_filenames: List[Path]
+        self,
+        image_filenames: List[Path],
+        mask_filenames: List[Path],
+        depth_filenames: List[Path],
     ):
         """
         Setup the downscale factor for the dataset. This is used to downscale the images and cameras.
@@ -512,7 +629,9 @@ class ColmapDataParser(DataParser):
         def get_fname(parent: Path, filepath: Path) -> Path:
             """Returns transformed file name when downscale factor is applied"""
             rel_part = filepath.relative_to(parent)
-            base_part = parent.parent / (str(parent.name) + f"_{self._downscale_factor}")
+            base_part = parent.parent / (
+                str(parent.name) + f"_{self._downscale_factor}"
+            )
             return base_part / rel_part
 
         filepath = next(iter(image_filenames))
@@ -527,12 +646,15 @@ class ColmapDataParser(DataParser):
                         break
                     df += 1
 
-                self._downscale_factor = 2**df
+                self._downscale_factor = 2 ** df
                 CONSOLE.log(f"Using image downscale factor of {self._downscale_factor}")
             else:
                 self._downscale_factor = self.config.downscale_factor
             if self._downscale_factor > 1 and not all(
-                get_fname(self.config.data / self.config.images_path, fp).parent.exists() for fp in image_filenames
+                get_fname(
+                    self.config.data / self.config.images_path, fp
+                ).parent.exists()
+                for fp in image_filenames
             ):
                 # Downscaled images not found
                 # Ask if user wants to downscale the images automatically here
@@ -556,7 +678,9 @@ class ColmapDataParser(DataParser):
                         assert self.config.masks_path is not None
                         self._downscale_images(
                             mask_filenames,
-                            partial(get_fname, self.config.data / self.config.masks_path),
+                            partial(
+                                get_fname, self.config.data / self.config.masks_path
+                            ),
                             self._downscale_factor,
                             self.config.downscale_rounding_mode,
                             nearest_neighbor=True,
@@ -565,7 +689,9 @@ class ColmapDataParser(DataParser):
                         assert self.config.depths_path is not None
                         self._downscale_images(
                             depth_filenames,
-                            partial(get_fname, self.config.data / self.config.depths_path),
+                            partial(
+                                get_fname, self.config.data / self.config.depths_path
+                            ),
                             self._downscale_factor,
                             self.config.downscale_rounding_mode,
                             nearest_neighbor=True,
@@ -575,12 +701,21 @@ class ColmapDataParser(DataParser):
 
         # Return transformed filenames
         if self._downscale_factor > 1:
-            image_filenames = [get_fname(self.config.data / self.config.images_path, fp) for fp in image_filenames]
+            image_filenames = [
+                get_fname(self.config.data / self.config.images_path, fp)
+                for fp in image_filenames
+            ]
             if len(mask_filenames) > 0:
                 assert self.config.masks_path is not None
-                mask_filenames = [get_fname(self.config.data / self.config.masks_path, fp) for fp in mask_filenames]
+                mask_filenames = [
+                    get_fname(self.config.data / self.config.masks_path, fp)
+                    for fp in mask_filenames
+                ]
             if len(depth_filenames) > 0:
                 assert self.config.depths_path is not None
-                depth_filenames = [get_fname(self.config.data / self.config.depths_path, fp) for fp in depth_filenames]
+                depth_filenames = [
+                    get_fname(self.config.data / self.config.depths_path, fp)
+                    for fp in depth_filenames
+                ]
         assert isinstance(self._downscale_factor, int)
         return image_filenames, mask_filenames, depth_filenames, self._downscale_factor

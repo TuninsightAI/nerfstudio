@@ -137,7 +137,7 @@ ns-dev-sync-viser-message-defs = "nerfstudio.scripts.viewer.sync_viser_message_d
 ns-img2video = "nerfstudio.scripts.dctoolbox.image_to_video:entrypoint"
 
 [tool.setuptools.packages.find]
-include = ["nerfstudio*"]
+include = ["nerfstudio*", "dctoolbox*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.cu", "*.json", "py.typed", "setup.bash", "setup.zsh"]

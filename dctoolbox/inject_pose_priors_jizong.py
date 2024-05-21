@@ -1,11 +1,10 @@
+import numpy as np
 import sqlite3
+import torch
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-import torch
-
-from nerfstudio.scripts.dctoolbox.utils import quat2rotation
+from dctoolbox.utils import quat2rotation
 
 
 @dataclass
@@ -56,9 +55,18 @@ class ColmapPriorInjectionConfig:
                 insert into images ( prior_qw, prior_qx, prior_qy, prior_qz, prior_tx, prior_ty, prior_tz, camera_id, name) 
                 values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            idx, qw, qx, qy, qz, px, py, pz, cam_no, name = (
-                image  # these are elements for w2c matrix
-            )
+            (
+                idx,
+                qw,
+                qx,
+                qy,
+                qz,
+                px,
+                py,
+                pz,
+                cam_no,
+                name,
+            ) = image  # these are elements for w2c matrix
             R = np.zeros((4, 4))
             R[:3, :3] = quat2rotation(
                 torch.tensor([float(qw), float(qx), float(qy), float(qz)])[None, ...]

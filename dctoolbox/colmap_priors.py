@@ -1,16 +1,42 @@
 import json
+import numpy as np
 import os
+import rich
+import torch
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-import rich
-import torch
-
-from nerfstudio.scripts.dctoolbox.utils import quat2rotation, rotation2quat
+from dctoolbox.utils import quat2rotation, rotation2quat
 
 # opencv convention to robotics convention
 S = np.array([[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=float)
+
+
+@dataclass(slots=True)
+class Image:
+    # [qw, qx, qy, qz, px, py, pz, cam_no, v]
+    qw: float
+    qx: float
+    qy: float
+    qz: float
+    px: float
+    py: float
+    pz: float
+    cam_no: int
+    image_name: str
+
+    def tolist(self):
+        return [
+            self.qw,
+            self.qx,
+            self.qy,
+            self.qz,
+            self.px,
+            self.py,
+            self.pz,
+            self.cam_no,
+            self.image_name,
+        ]
 
 
 @dataclass
@@ -97,22 +123,29 @@ class ColmapPriorConfig:
 
                 cam_no = cam_ids.index(k) + 1
                 # v = (Path(v.split("_")[1])/v).as_posix()
-                observations.append([qw, qx, qy, qz, px, py, pz, cam_no, v])
+                observations.append(Image(qw, qx, qy, qz, px, py, pz, cam_no, v))
 
         # check if the image and the extracted prior the same.
         if self.image_dir is not None:
-            prior_image_names = [x[-1] for x in observations]
             image_names = [
                 str(x.relative_to(self.image_dir))
                 for x in self.image_dir.rglob("*.png")
             ]
+            previous_observation_length = len(observations)
 
-            observations = [x for x in observations if x[-1] in image_names]
-            assert set(prior_image_names) == set(image_names), (
-                set(prior_image_names) - set(image_names),
-                set(image_names) - set(prior_image_names),
-            )
-            rich.print("All image names are the same as the prior names.")
+            observations = [x for x in observations if x.image_name in image_names]
+
+            cur_observation_length = len(observations)
+
+            if previous_observation_length == cur_observation_length:
+                rich.print(f"Prior images match with images in the folder")
+            elif previous_observation_length > cur_observation_length:
+                rich.print(
+                    f"Prune observations from {previous_observation_length} to {cur_observation_length}, "
+                    f"due to inconsistency of prior and provided images."
+                )
+            else:
+                raise RuntimeError(f"provided images are greater than the prior.")
 
         if Path(f"{self.output_folder}/points3D.txt").exists():
             os.remove(f"{self.output_folder}/points3D.txt")
@@ -122,7 +155,7 @@ class ColmapPriorConfig:
             os.remove(f"{self.output_folder}/images.txt")
         with open(f"{self.output_folder}/images.txt", "w") as f:
             for i, o in enumerate(observations):
-                f.write(" ".join([str(v) for v in [i + 1] + o]))
+                f.write(" ".join([str(v) for v in [i + 1] + o.tolist()]))
                 f.write("\n\n")
 
         if Path(f"{self.output_folder}/cameras.txt").exists():

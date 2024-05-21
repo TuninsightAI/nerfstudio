@@ -1,63 +1,28 @@
-import shutil
-import subprocess
-import sys
-import typing
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from contextlib import nullcontext
-from pathlib import Path
-
 import appdirs
+import os
 import requests
 import rich
+import shutil
+import typing
+import tyro
+from dataclasses import dataclass
+from loguru import logger
+from pathlib import Path
 from rich.console import Console
 from rich.progress import track
+from rich.prompt import Confirm
 
-from nerfstudio.scripts.dctoolbox.colmap_priors_jizong import ColmapPriorConfig
-from nerfstudio.scripts.dctoolbox.inject_pose_priors_jizong import (
+from dctoolbox.colmap_priors import ColmapPriorConfig
+from dctoolbox.inject_pose_priors_jizong import (
     ColmapPriorInjectionConfig,
 )
+from nerfstudio.utils.rich_utils import status
+from nerfstudio.utils.scripts import run_command
 
 CONSOLE = Console(width=120)
 
 colmap_command = "colmap"
 magick_command = "magick"
-
-
-def run_command(cmd: str, verbose=True) -> subprocess.CompletedProcess | str:
-    """Runs a command and returns the output.
-
-    Args:
-        cmd: Command to run.
-        verbose: If True, logs the output of the command.
-    Returns:
-        The output of the command if return_output is True, otherwise None.
-    """
-    out = subprocess.run(cmd, capture_output=not verbose, shell=True, check=False)
-    if out.returncode != 0:
-        CONSOLE.rule(
-            "[bold red] :skull: :skull: :skull: ERROR :skull: :skull: :skull: ",
-            style="red",
-        )
-        CONSOLE.print(f"[bold red]Error running command: {cmd}")
-        CONSOLE.rule(style="red")
-        CONSOLE.print(out.stderr.decode("utf-8"))
-        sys.exit(1)
-    if out.stdout is not None:
-        return out.stdout.decode("utf-8")
-    return out
-
-
-def status(msg: str, spinner: str = "bouncingBall", verbose: bool = False):
-    """A context manager that does nothing is verbose is True. Otherwise it hides logs under a message.
-
-    Args:
-        msg: The message to log.
-        spinner: The spinner to use.
-        verbose: If True, print all logs, else hide them.
-    """
-    if verbose:
-        return nullcontext()
-    return CONSOLE.status(msg, spinner=spinner)
 
 
 def get_vocab_tree() -> Path:
@@ -103,8 +68,10 @@ def assert_dataset_path(database_path: Path | str) -> None:
 
 def create_empty_database(database_path: Path | str, verbose: bool = False):
     if Path(database_path).exists():
-        raise FileExistsError(f"{database_path} already exists.")
-    # assert_dataset_path(database_path)
+        if Confirm("Exisiting the database, overriding?"):
+            os.remove(database_path)
+        else:
+            raise FileExistsError(f"{database_path} already exists.")
 
     database_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = f"{colmap_command} database_creator --database_path {database_path}"
@@ -287,98 +254,95 @@ def bundle_adjustment(
         run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
 
 
-def get_args():
-    parser = ArgumentParser(
-        "Colmap converter", formatter_class=ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        "--data-dir",
-        "-s",
-        required=True,
-        type=str,
-        help="to include the input folder of images.",
-    )
-    parser.add_argument(
-        "--image-folder-name",
-        type=str,
-        default="images",
-        help="name of the image folder",
-    )
-    parser.add_argument(
-        "--mask-folder-name", type=str, default="masks", help="name of the mask folder"
-    )
-
-    parser.add_argument(
-        "--exp-name", "-d", type=str, default="distorted", help="name of the experiment"
-    )
-
-    parser.add_argument(
-        "--matching-type",
-        choices=["vocab_tree", "exhaustive", "sequential", "spatial"],
-        default="vocab_tree",
-        help="matching type",
-    )
-    parser.add_argument(
-        "--prior-injection",
-        default=False,
-        action="store_true",
-        help="Inject pose priors",
-    )
-    parser.add_argument("--meta-file", type=str, help="meta json file", default=None)
-    parser.add_argument(
-        "--mapper-method",
-        type=str,
-        choices=["mapper", "point-triangulation"],
-        help="mapper method. if mapper, will not use extrinsic prior."
-        "point-triangulation will use extrinsic prior.",
-    )
-    args = parser.parse_args()
-
-    if args.mapper_method == "point-triangulation":
-        assert (
-            args.meta_file is not None
-        ), "meta_file is required for point-triangulation."
-        assert (
-            args.prior_injection
-        ), "prior_injection is required for point-triangulation."
-
-    rich.print("=" * 15, "configurations", "=" * 15)
-    rich.print(args)
-    rich.print("=" * 40)
-
-    return args
+def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False):
+    assert_dataset_path(database_path)
+    model_alignment_cmd = [
+        "colmap model_alignment",
+        f"--input_path {str(sparse_dir)}",
+        f"--output_path {str(sparse_dir)}",
+        f"--dataset_path {str(database_path)}",
+        f"--ref_is_gps 0",
+        f"----alignment_type custom",
+        "--robust_alignment 1",
+        "--robust_alignment_max_error 3.0",
+    ]
+    rich.print(" ".join(model_alignment_cmd))
+    with status(
+        msg="[bold yellow]Running COLMAP model alignment",
+        spinner="circle",
+        verbose=verbose,
+    ):
+        run_command(" ".join(model_alignment_cmd), verbose=verbose)
 
 
-def main(args):
-    data_dir = Path(args.data_dir)
-    image_dir = Path(data_dir, args.image_folder_name)
-    mask_dir = Path(data_dir, args.mask_folder_name)
-    exp_dir = Path(data_dir, args.exp_name)
-    prior_dir = exp_dir / "priors"
+@dataclass
+class ColmapRunner:
 
-    assert data_dir.exists(), f"{data_dir} does not exist."
-    assert image_dir.exists(), f"{image_dir} does not exist."
+    data_dir: Path
+    image_folder_name: str = "images"
+    mask_folder_name: str | None = None
+    experiment_name: str = "colmap"
+    matching_type: typing.Literal[
+        "vocab_tree", "exhaustive", "sequential", "spatial"
+    ] = "exhaustive"
 
-    database_path = data_dir / args.exp_name / "database.db"
+    prior_injection: bool = False
+    meta_file: Path | None = None
 
-    create_empty_database(database_path, verbose=True)
+    def __post_init__(self):
+        if self.prior_injection:
+            assert (
+                self.meta_file is not None
+            ), "meta_file is required for prior injection."
 
-    if args.prior_injection:
-        meta_file = Path(args.meta_file)
-        assert meta_file.exists(), f"{meta_file} does not exist."
-        injection_to_empty_database(
-            meta_json_path=meta_file,
-            database_path=database_path,
-            verbose=True,
-            output_dir=prior_dir,
-            image_dir=image_dir,
-        )
+    def main(self):
+        data_dir = self.data_dir
+        image_dir = data_dir / self.image_folder_name
+        mask_dir = data_dir / self.mask_folder_name
+        exp_dir = data_dir / self.experiment_name
+        prior_dir = exp_dir / "priors"
 
-    feature_extraction(database_path, image_dir, mask_dir, verbose=False)
+        assert data_dir.exists(), f"{data_dir} does not exist."
+        assert image_dir.exists(), f"{image_dir} does not exist."
 
-    feature_matching(args.matching_type, database_path, verbose=False)
+        database_path = data_dir / self.experiment_name / "database.db"
 
-    if args.mapper_method == "mapper":
+        create_empty_database(database_path, verbose=True)
+
+        if self.prior_injection:
+            meta_file = Path(self.meta_file)
+            assert meta_file.exists(), f"{meta_file} does not exist."
+            injection_to_empty_database(
+                meta_json_path=meta_file,
+                database_path=database_path,
+                verbose=True,
+                output_dir=prior_dir,
+                image_dir=image_dir,
+            )
+
+        feature_extraction(database_path, image_dir, mask_dir, verbose=False)
+
+        feature_matching(self.matching_type, database_path, verbose=False)
+
+
+@dataclass
+class ColmapRunnerFromScratch(ColmapRunner):
+    model_alignment: bool = False
+
+    def __post_init__(self):
+        if self.model_alignment:
+            if self.prior_injection is False:
+                logger.warning("Model alignment requires prior injection.. Ignoring...")
+                self.model_alignment = False
+
+    def main(self):
+        data_dir = self.data_dir
+        image_dir = data_dir / self.image_folder_name
+        exp_dir = data_dir / self.experiment_name
+        database_path = data_dir / self.experiment_name / "database.db"
+
+        super().main()
+
         mapper(
             database_path=database_path,
             image_dir=image_dir,
@@ -390,21 +354,47 @@ def main(args):
             output_path=exp_dir / "sparse" / "0",
             verbose=True,
         )
-    elif args.mapper_method == "point-triangulation":
-        point_triangulation(
-            database_path=database_path,
-            image_dir=image_dir,
-            prior_dir=prior_dir,
-            sparse_dir=exp_dir / "prior_sparse",
-            verbose=False,
-        )
-        bundle_adjustment(
-            input_path=exp_dir / "prior_sparse",
-            output_path=exp_dir / "prior_sparse",
-            verbose=True,
-        )
+        if self.prior_injection:
+            model_alignment(database_path, exp_dir / "sparse" / "0", verbose=False)
+
+
+@dataclass
+class ColmapRunnerWithPointTriangulation(ColmapRunner):
+    refinement_time: int = 5
+
+    def __post_init__(self):
+        assert self.prior_injection is True
+        assert self.meta_file is not None
+
+    def main(self):
+        data_dir = self.data_dir
+        image_dir = data_dir / self.image_folder_name
+        exp_dir = data_dir / self.experiment_name
+        database_path = data_dir / self.experiment_name / "database.db"
+        prior_dir = exp_dir / "priors"
+        super().main()
+
+        for _ in range(self.refinement_time):
+            point_triangulation(
+                database_path=database_path,
+                image_dir=image_dir,
+                prior_dir=prior_dir,
+                sparse_dir=exp_dir / "prior_sparse",
+                verbose=False,
+            )
+            bundle_adjustment(
+                input_path=exp_dir / "prior_sparse",
+                output_path=exp_dir / "prior_sparse",
+                verbose=True,
+            )
+            model_alignment(database_path, exp_dir / "prior_sparse", verbose=False)
 
 
 if __name__ == "__main__":
-    args = get_args()
-    main(args)
+    config = tyro.extras.subcommand_cli_from_dict(
+        {
+            "colmap": ColmapRunnerFromScratch,
+            "triangulation": ColmapRunnerWithPointTriangulation,
+        }
+    )
+    config.main()
