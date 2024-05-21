@@ -23,6 +23,8 @@ from PIL import Image
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
+
+from loguru import logger
 from rich.prompt import Confirm
 from typing import List, Literal, Optional, Type
 
@@ -179,9 +181,15 @@ class ColmapDataParser(DataParser):
                 c2w = c2w[np.array([0, 2, 1, 3]), :]
                 c2w[2, :] *= -1
 
+            if not (self.config.data / self.config.images_path / im_data.name).exists():
+                logger.warning(
+                    f"Image {im_data.name} not found at {self.config.data / self.config.images_path}"
+                )
+                continue
+
             frame = {
                 "file_path": (
-                    self.config.data / self.config.images_path / im_data.name
+                        self.config.data / self.config.images_path / im_data.name
                 ).as_posix(),
                 "transform_matrix": c2w,
                 "colmap_im_id": im_id,
