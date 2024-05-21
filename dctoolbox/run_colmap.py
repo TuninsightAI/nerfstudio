@@ -1,19 +1,20 @@
-import appdirs
 import os
-import requests
-import rich
 import shutil
 import typing
-import tyro
 from dataclasses import dataclass
-from loguru import logger
 from pathlib import Path
+
+import appdirs
+import requests
+import rich
+import tyro
+from loguru import logger
 from rich.console import Console
 from rich.progress import track
 from rich.prompt import Confirm
 
 from dctoolbox.colmap_priors import ColmapPriorConfig
-from dctoolbox.inject_pose_priors_jizong import (
+from dctoolbox.inject_pose_priors import (
     ColmapPriorInjectionConfig,
 )
 from nerfstudio.utils.rich_utils import status
@@ -42,9 +43,9 @@ def get_vocab_tree() -> Path:
             total_length = r.headers.get("content-length")
             assert total_length is not None
             for chunk in track(
-                r.iter_content(chunk_size=1024),
-                total=int(total_length) / 1024 + 1,
-                description="Downloading vocab tree...",
+                    r.iter_content(chunk_size=1024),
+                    total=int(total_length) / 1024 + 1,
+                    description="Downloading vocab tree...",
             ):
                 if chunk:
                     f.write(chunk)
@@ -58,11 +59,11 @@ def assert_dataset_path(database_path: Path | str) -> None:
     """
     database_path = Path(database_path)
     assert (
-        database_path.exists() and database_path.is_file()
+            database_path.exists() and database_path.is_file()
     ), f"Expected a file, got {database_path}"
     assert database_path.suffix == ".db", f"Expected a .db file, got {database_path}"
     assert (
-        database_path.stem == "database"
+            database_path.stem == "database"
     ), f"Expected a database.db file, got {database_path}"
 
 
@@ -77,19 +78,19 @@ def create_empty_database(database_path: Path | str, verbose: bool = False):
     cmd = f"{colmap_command} database_creator --database_path {database_path}"
     rich.print(cmd)
     with status(
-        msg="[bold yellow]Running COLMAP dataset creator...",
-        spinner="moon",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP dataset creator...",
+            spinner="moon",
+            verbose=verbose,
     ):
         run_command(cmd, verbose=verbose)
 
 
 def injection_to_empty_database(
-    meta_json_path: Path,
-    output_dir: Path,
-    database_path: Path,
-    image_dir: Path | None = None,
-    verbose: bool = False,
+        meta_json_path: Path,
+        output_dir: Path,
+        database_path: Path,
+        image_dir: Path | None = None,
+        verbose: bool = False,
 ):
     assert_dataset_path(database_path)
 
@@ -104,10 +105,10 @@ def injection_to_empty_database(
 
 
 def feature_extraction(
-    database_path: Path | str,
-    image_folder: str | Path,
-    camera_mask_folder: Path | str = None,
-    verbose: bool = True,
+        database_path: Path | str,
+        image_folder: str | Path,
+        camera_mask_folder: Path | str = None,
+        verbose: bool = True,
 ):
     database_path = Path(database_path)
     assert_dataset_path(database_path=database_path)
@@ -137,11 +138,11 @@ def feature_extraction(
 
 
 def feature_matching(
-    matching_method: typing.Literal[
-        "vocab_tree", "exhaustive", "sequential", "spatial"
-    ],
-    database_path: Path,
-    verbose: bool = False,
+        matching_method: typing.Literal[
+            "vocab_tree", "exhaustive", "sequential", "spatial"
+        ],
+        database_path: Path,
+        verbose: bool = False,
 ):
     shutil.copy(
         database_path, database_path.parent / "database.db_before_feature_matching"
@@ -170,16 +171,16 @@ def feature_matching(
     feature_matcher_cmd = " ".join(feature_matcher_cmd)
     rich.print(feature_matcher_cmd)
     with status(
-        msg="[bold yellow]Running COLMAP feature matcher...",
-        spinner="runner",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP feature matcher...",
+            spinner="runner",
+            verbose=verbose,
     ):
         run_command(feature_matcher_cmd, verbose=verbose)
     CONSOLE.log("[bold green]:tada: Done matching COLMAP features.")
 
 
 def mapper(
-    *, database_path: Path, image_dir: Path, verbose: bool = False, sparse_dir: Path
+        *, database_path: Path, image_dir: Path, verbose: bool = False, sparse_dir: Path
 ):
     # Bundle adjustment
     shutil.copy(database_path, database_path.parent / "database.db_before_mapper")
@@ -198,21 +199,21 @@ def mapper(
     rich.print(mapper_cmd)
 
     with status(
-        msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
-        spinner="circle",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
+            spinner="circle",
+            verbose=verbose,
     ):
         run_command(mapper_cmd, verbose=verbose)
     CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
 
 
 def point_triangulation(
-    *,
-    database_path: Path,
-    image_dir: Path,
-    prior_dir: Path,
-    sparse_dir: Path,
-    verbose: bool = True,
+        *,
+        database_path: Path,
+        image_dir: Path,
+        prior_dir: Path,
+        sparse_dir: Path,
+        verbose: bool = True,
 ):
     # shutil.copy(database_path, database_path.parent / "database.db_before_point_triangulation")
 
@@ -228,15 +229,15 @@ def point_triangulation(
     rich.print(" ".join(point_triangulation_cmd))
 
     with status(
-        msg="[bold yellow]Running COLMAP point triangulation... (This may take a while)",
-        spinner="circle",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP point triangulation... (This may take a while)",
+            spinner="circle",
+            verbose=verbose,
     ):
         run_command(" ".join(point_triangulation_cmd), verbose=verbose)
 
 
 def bundle_adjustment(
-    *, input_path: str | Path, output_path: str | Path, verbose: bool = True
+        *, input_path: str | Path, output_path: str | Path, verbose: bool = True
 ):
     # shutil.copy(database_path, database_path.parent / "database.db_before_point_triangulation")
     bundle_adjuster_cmd = [
@@ -247,9 +248,9 @@ def bundle_adjustment(
     ]
     rich.print(" ".join(bundle_adjuster_cmd))
     with status(
-        msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
-        spinner="circle",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
+            spinner="circle",
+            verbose=verbose,
     ):
         run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
 
@@ -268,16 +269,15 @@ def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False
     ]
     rich.print(" ".join(model_alignment_cmd))
     with status(
-        msg="[bold yellow]Running COLMAP model alignment",
-        spinner="circle",
-        verbose=verbose,
+            msg="[bold yellow]Running COLMAP model alignment",
+            spinner="circle",
+            verbose=verbose,
     ):
         run_command(" ".join(model_alignment_cmd), verbose=verbose)
 
 
 @dataclass
 class ColmapRunner:
-
     data_dir: Path
     image_folder_name: str = "images"
     mask_folder_name: str | None = None
@@ -292,7 +292,7 @@ class ColmapRunner:
     def __post_init__(self):
         if self.prior_injection:
             assert (
-                self.meta_file is not None
+                    self.meta_file is not None
             ), "meta_file is required for prior injection."
 
     def main(self):
@@ -360,7 +360,8 @@ class ColmapRunnerFromScratch(ColmapRunner):
 
 @dataclass
 class ColmapRunnerWithPointTriangulation(ColmapRunner):
-    refinement_time: int = 5
+    refinement_time: int = 1
+    prior_injection: tyro.conf.Suppress[bool] = True
 
     def __post_init__(self):
         assert self.prior_injection is True
