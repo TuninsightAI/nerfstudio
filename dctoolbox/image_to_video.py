@@ -1,8 +1,7 @@
-from dataclasses import dataclass
-from pathlib import Path
-
 import moviepy.video.io.ImageSequenceClip
 import tyro
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(kw_only=True)
