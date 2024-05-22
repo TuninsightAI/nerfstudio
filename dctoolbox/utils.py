@@ -1,9 +1,30 @@
 import torch
+from functools import wraps
 from jaxtyping import Float
+from threading import Thread
 from torch import Tensor
 from torch.nn import functional as F
 
-__all__ = ["quat2rotation", "rotation2quat"]
+__all__ = ["quat2rotation", "rotation2quat", "run_in_thread"]
+
+
+def run_in_thread(_func=None, *, daemon: bool = False, name: str | None = None):
+    def decorator_run(func):
+        @wraps(func)
+        def run(*args, **kwargs):
+            proc = Thread(
+                target=func, args=args, kwargs=kwargs, daemon=daemon, name=name
+            )
+            proc.start()
+
+            return proc
+
+        return run
+
+    if _func is None:
+        return decorator_run
+    else:
+        return decorator_run(_func)
 
 
 def quat2rotation(r: Float[Tensor, "batch 4"]) -> Float[Tensor, "batch 3 3"]:
