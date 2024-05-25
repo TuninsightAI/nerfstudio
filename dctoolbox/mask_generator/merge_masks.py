@@ -1,9 +1,10 @@
-import numpy as np
 import typing as t
-import tyro
-from PIL import Image
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
+import tyro
+from PIL import Image
 from tqdm import tqdm
 
 
@@ -30,13 +31,17 @@ class MergeMasksConfig:
 
         for cur_masks in tqdm(zip(*[sorted(Path(x).rglob("*.png")) for x in self.mask_dirs])):
             assert len(set([x.stem for x in cur_masks])) == 1, "Mismatched mask names"
+            cur_masks: t.List[Path]
 
             masks = [_get_image_array(x) for x in cur_masks]
             merged_mask = 1 - np.array(sum(masks)).astype(np.uint8) / 255
+            Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent).mkdir(parents=True, exist_ok=True)
+
             Image.fromarray((merged_mask * 255).astype(np.uint8)).save(
-                Path(self.output_dir, cur_masks[0].name + ".png").as_posix())
+                Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent,
+                     cur_masks[0].name + ".png").as_posix())
             Image.fromarray((merged_mask * 255).astype(np.uint8)).save(
-                Path(self.output_dir, cur_masks[0].name).as_posix())
+                Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent, cur_masks[0].name).as_posix())
 
 
 if __name__ == "__main__":
