@@ -89,12 +89,16 @@ def injection_to_empty_database(
     output_dir: Path,
     database_path: Path,
     image_dir: Path | None = None,
+    image_extension: str = "png",
     verbose: bool = False,
 ):
     assert_dataset_path(database_path)
 
     priorConfig = ColmapPriorConfig(
-        meta_json=meta_json_path, output_folder=output_dir, image_dir=image_dir
+        meta_json=meta_json_path,
+        output_folder=output_dir,
+        image_dir=image_dir,
+        image_extension=image_extension,
     )
     priorConfig.main()
 
@@ -287,6 +291,7 @@ class ColmapRunner:
 
     prior_injection: bool = False
     meta_file: Path | None = None
+    image_extension: str = "png"
 
     def __post_init__(self):
         if self.prior_injection:
@@ -297,7 +302,10 @@ class ColmapRunner:
     def main(self):
         data_dir = self.data_dir
         image_dir = data_dir / self.image_folder_name
-        mask_dir = data_dir / self.mask_folder_name
+        if self.mask_folder_name is not None:
+            mask_dir = data_dir / self.mask_folder_name
+        else:
+            mask_dir = None
         exp_dir = data_dir / self.experiment_name
         prior_dir = exp_dir / "priors"
 
@@ -317,6 +325,7 @@ class ColmapRunner:
                 verbose=True,
                 output_dir=prior_dir,
                 image_dir=image_dir,
+                image_extension=self.image_extension,
             )
 
         feature_extraction(database_path, image_dir, mask_dir, verbose=False)

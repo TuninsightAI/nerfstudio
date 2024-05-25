@@ -47,6 +47,7 @@ class ColmapPriorConfig:
     """path to the reference folder"""
     image_dir: Path | None = None
     """image-dir, to check if the image name and the prior name corresponds"""
+    image_extension: str = "png"
 
     def __post_init__(self):
 
@@ -129,7 +130,7 @@ class ColmapPriorConfig:
         if self.image_dir is not None:
             image_names = [
                 str(x.relative_to(self.image_dir))
-                for x in self.image_dir.rglob("*.png")
+                for x in self.image_dir.rglob(f"*.{self.image_extension}")
             ]
             previous_observation_length = len(observations)
 
