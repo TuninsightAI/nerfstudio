@@ -1,13 +1,16 @@
-import appdirs
+from __future__ import annotations
+
 import os
-import requests
-import rich
 import shutil
 import typing
-import tyro
 from dataclasses import dataclass
-from loguru import logger
 from pathlib import Path
+
+import appdirs
+import requests
+import rich
+import tyro
+from loguru import logger
 from rich.console import Console
 from rich.progress import track
 from rich.prompt import Confirm
@@ -116,9 +119,24 @@ def feature_extraction(
     database_path = Path(database_path)
     assert_dataset_path(database_path=database_path)
 
-    shutil.copy(
-        database_path, database_path.parent / "database.db_before_feature_extraction"
-    )
+    # check consistency of image and mask
+    if camera_mask_folder is not None:
+        mask_names = sorted(
+            set(
+                [
+                    x.stem
+                    for x in camera_mask_folder.rglob("*.png")
+                    if len(Path(x.stem).suffix) > 0
+                ]
+            )
+        )
+        image_names = sorted(
+            set([x.name for x in image_folder.rglob("*") if x.is_file()])
+        )
+        assert mask_names == image_names, (
+            f"Mask and image names are not consistent. "
+            f"mask: {mask_names[:5]}, image: {image_names[:5]}"
+        )
 
     feature_extractor_cmd = [
         f"{colmap_command} feature_extractor",
@@ -302,8 +320,10 @@ class ColmapRunner:
     def main(self):
         data_dir = self.data_dir
         image_dir = data_dir / self.image_folder_name
+        assert image_dir.exists(), f"{image_dir} does not exist."
         if self.mask_folder_name is not None:
             mask_dir = data_dir / self.mask_folder_name
+            assert mask_dir.exists(), f"{mask_dir} does not exist."
         else:
             mask_dir = None
         exp_dir = data_dir / self.experiment_name
