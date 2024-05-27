@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#!/usr/bin/env python
+# !/usr/bin/env python
 """
 render.py
 """
@@ -26,6 +26,7 @@ import struct
 import sys
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
+from inspect import signature
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -566,9 +567,9 @@ class RenderCameraPath(BaseRender):
                     self.output_path = Path(str(left_eye_path.parent)[:-5])
                     self.output_path.mkdir(parents=True, exist_ok=True)
                     if self.image_format == "png":
-                        ffmpeg_vr180_command = f'ffmpeg -y -pattern_type glob -i "{str(left_eye_path.with_suffix("") / "*.png")}"  -pattern_type glob -i "{str(right_eye_path.with_suffix("") / "*.png")}" -filter_complex hstack -start_number 0 "{str(self.output_path)+"//%05d.png"}"'
+                        ffmpeg_vr180_command = f'ffmpeg -y -pattern_type glob -i "{str(left_eye_path.with_suffix("") / "*.png")}"  -pattern_type glob -i "{str(right_eye_path.with_suffix("") / "*.png")}" -filter_complex hstack -start_number 0 "{str(self.output_path) + "//%05d.png"}"'
                     elif self.image_format == "jpeg":
-                        ffmpeg_vr180_command = f'ffmpeg -y -pattern_type glob -i "{str(left_eye_path.with_suffix("") / "*.jpg")}"  -pattern_type glob -i "{str(right_eye_path.with_suffix("") / "*.jpg")}" -filter_complex hstack -start_number 0 "{str(self.output_path)+"//%05d.jpg"}"'
+                        ffmpeg_vr180_command = f'ffmpeg -y -pattern_type glob -i "{str(left_eye_path.with_suffix("") / "*.jpg")}"  -pattern_type glob -i "{str(right_eye_path.with_suffix("") / "*.jpg")}" -filter_complex hstack -start_number 0 "{str(self.output_path) + "//%05d.jpg"}"'
                     run_command(ffmpeg_vr180_command, verbose=False)
 
                 # remove the temp files directory
@@ -714,6 +715,15 @@ class DatasetRender(BaseRender):
     rendered_output_names: Optional[List[str]] = field(default_factory=lambda: None)
     """Name of the renderer outputs to use. rgb, depth, raw-depth, gt-rgb etc. By default all outputs are rendered."""
 
+    apply_camera_correction: bool = False
+    """ Whether to apply camera correction to the rendered images. "
+    """
+    apply_appearence_embedding_on_train: bool = False
+    """ Whether to apply appearence embedding on the training images. """
+
+    correct_principal_point: bool = False
+    disable_distortion: bool = False
+
     def main(self):
         config: TrainerConfig
 
@@ -750,6 +760,10 @@ class DatasetRender(BaseRender):
 
                 dataset = datamanager.train_dataset
                 dataparser_outputs = getattr(dataset, "_dataparser_outputs", datamanager.train_dataparser_outputs)
+                if self.apply_appearence_embedding_on_train:
+                    pipeline.model.train()  # take into account of the model training mode
+                else:
+                    pipeline.model.eval()
             else:
                 with _disable_datamanager_setup(data_manager_config._target):  # pylint: disable=protected-access
                     datamanager = data_manager_config.setup(test_mode=split, device=pipeline.device)
@@ -758,6 +772,9 @@ class DatasetRender(BaseRender):
                 dataparser_outputs = getattr(dataset, "_dataparser_outputs", None)
                 if dataparser_outputs is None:
                     dataparser_outputs = datamanager.dataparser.get_dataparser_outputs(split=datamanager.test_split)
+
+                pipeline.model.eval()  # take into account of the model training mode
+
             dataloader = FixedIndicesEvalDataloader(
                 input_dataset=dataset,
                 device=datamanager.device,
@@ -775,9 +792,22 @@ class DatasetRender(BaseRender):
                 TimeRemainingColumn(elapsed_when_finished=False, compact=False),
                 TimeElapsedColumn(),
             ) as progress:
+                corrected_poses = []
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
-                        outputs = pipeline.model.get_outputs_for_camera(camera)
+                        image_name = dataparser_outputs.image_filenames[camera_idx].relative_to(images_root)
+                        camera.metadata = dict(cam_idx=camera_idx, image_name=image_name)
+
+                        sig_keys = signature(pipeline.model.get_outputs_for_camera).parameters.keys()
+                        camera_correction_kwargs = {"disable_distortion": self.disable_distortion}
+                        if "camera_correction" in sig_keys:
+                            camera_correction_kwargs["camera_correction"] = self.apply_camera_correction
+                        if self.correct_principal_point:
+                            # correct the camera
+                            camera.cx = camera.width / 2
+                            camera.cy = camera.height / 2
+                        outputs = pipeline.model.get_outputs_for_camera(camera, **camera_correction_kwargs)
+                        corrected_poses.append(camera)
 
                     gt_batch = batch.copy()
                     gt_batch["rgb"] = gt_batch.pop("image")
@@ -868,6 +898,8 @@ class DatasetRender(BaseRender):
                             )
                         else:
                             raise ValueError(f"Unknown image format {self.image_format}")
+        torch.save(corrected_poses, self.output_path / split / "corrected_poses.pth")
+
 
         table = Table(
             title=None,
@@ -877,7 +909,8 @@ class DatasetRender(BaseRender):
         )
         for split in self.split.split("+"):
             table.add_row(f"Outputs {split}", str(self.output_path / split))
-        CONSOLE.print(Panel(table, title="[bold][green]:tada: Render on split {} Complete :tada:[/bold]", expand=False))
+        CONSOLE.print(Panel(table, title=f"[bold][green]:tada: Render on split {self.split} Complete :tada:[/bold]",
+                            expand=False))
 
 
 Commands = tyro.conf.FlagConversionOff[

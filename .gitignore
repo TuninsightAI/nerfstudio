@@ -5,7 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+data
 # Distribution / packaging
 .Python
 build/
@@ -26,6 +26,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.idea
+
+data*
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -191,3 +194,4 @@ camera_paths/
 # pixi environments
 .pixi
 /third_party
+*.pt

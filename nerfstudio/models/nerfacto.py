@@ -18,15 +18,18 @@ NeRF implementation that combines many recent advancements.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Tuple, Type
+from typing import Dict, List, Literal, Tuple, Type, Optional
 
 import numpy as np
 import torch
 from torch.nn import Parameter
 
 from nerfstudio.cameras.camera_optimizers import CameraOptimizer, CameraOptimizerConfig
+from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle, RaySamples
+from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
@@ -46,6 +49,7 @@ from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.model_components.shaders import NormalsShader
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import colormaps
+from nerfstudio.utils.yiq import YIQLoss
 
 
 @dataclass
@@ -130,6 +134,8 @@ class NerfactoModelConfig(ModelConfig):
     """Average initial density output from MLP. """
     camera_optimizer: CameraOptimizerConfig = field(default_factory=lambda: CameraOptimizerConfig(mode="SO3xR3"))
     """Config of the camera optimizer to use"""
+    rbg_loss: Literal["mse", "yiq"] = "mse"
+    """ rgb loss used for photometric supervision """
 
 
 class NerfactoModel(Model):
@@ -240,7 +246,7 @@ class NerfactoModel(Model):
         self.normals_shader = NormalsShader()
 
         # losses
-        self.rgb_loss = MSELoss()
+        self.rgb_loss = MSELoss() if self.config.rbg_loss == "mse" else YIQLoss((0.2, 1.0, 1.0))
         self.step = 0
         # metrics
         from torchmetrics.functional import structural_similarity_index_measure
@@ -260,7 +266,7 @@ class NerfactoModel(Model):
         return param_groups
 
     def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
+            self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
         callbacks = []
         if self.config.use_proposal_weight_anneal:
@@ -391,7 +397,7 @@ class NerfactoModel(Model):
         return loss_dict
 
     def get_image_metrics_and_images(
-        self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
+            self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
         gt_rgb = batch["image"].to(self.device)
         predicted_rgb = outputs["rgb"]  # Blended with background (black if random background)
@@ -429,3 +435,19 @@ class NerfactoModel(Model):
             images_dict[key] = prop_depth_i
 
         return metrics_dict, images_dict
+
+    @torch.no_grad()
+    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None,
+                               camera_correction: bool = False, disable_distortion=False) -> Dict[str, torch.Tensor]:
+        """
+        added camera correction if rendering with training images.
+        :param camera:
+        :param obb_box:
+        :param camera_correction:
+        :return:
+        """
+        if camera_correction:
+            assert camera.metadata is not None
+            camera = deepcopy(camera)
+            camera.camera_to_worlds = self.camera_optimizer.apply_to_camera(camera)
+        return super().get_outputs_for_camera(camera, obb_box, disable_distortion=disable_distortion)

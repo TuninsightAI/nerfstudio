@@ -68,11 +68,11 @@ class Model(nn.Module):
     config: ModelConfig
 
     def __init__(
-        self,
-        config: ModelConfig,
-        scene_box: SceneBox,
-        num_train_data: int,
-        **kwargs,
+            self,
+            config: ModelConfig,
+            scene_box: SceneBox,
+            num_train_data: int,
+            **kwargs,
     ) -> None:
         super().__init__()
         self.config = config
@@ -93,7 +93,7 @@ class Model(nn.Module):
         return self.device_indicator_param.device
 
     def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
+            self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
         """Returns a list of callbacks that run functions at the specified training iterations."""
         return []
@@ -163,7 +163,8 @@ class Model(nn.Module):
         """
 
     @torch.no_grad()
-    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None) -> Dict[str, torch.Tensor]:
+    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None,
+                               disable_distortion=False) -> Dict[str, torch.Tensor]:
         """Takes in a camera, generates the raybundle, and computes the output of the model.
         Assumes a ray-based model.
 
@@ -171,7 +172,8 @@ class Model(nn.Module):
             camera: generates raybundle
         """
         return self.get_outputs_for_camera_ray_bundle(
-            camera.generate_rays(camera_indices=0, keep_shape=True, obb_box=obb_box)
+            camera.generate_rays(camera_indices=0, keep_shape=True, obb_box=obb_box,
+                                 disable_distortion=disable_distortion)
         )
 
     @torch.no_grad()
@@ -215,9 +217,9 @@ class Model(nn.Module):
         """
         accumulation_name = output_name.replace("rgb", "accumulation")
         if (
-            not hasattr(self, "renderer_rgb")
-            or not hasattr(self.renderer_rgb, "background_color")
-            or accumulation_name not in outputs
+                not hasattr(self, "renderer_rgb")
+                or not hasattr(self.renderer_rgb, "background_color")
+                or accumulation_name not in outputs
         ):
             raise NotImplementedError(f"get_rgba_image is not implemented for model {self.__class__.__name__}")
         rgb = outputs[output_name]
@@ -230,7 +232,7 @@ class Model(nn.Module):
 
     @abstractmethod
     def get_image_metrics_and_images(
-        self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
+            self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
         """Writes the test image outputs.
         TODO: This shouldn't return a loss
