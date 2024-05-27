@@ -174,7 +174,8 @@ def feature_matching(
         f"{colmap_command} {matching_method}_matcher",
         f"--database_path {database_path}",
         f"--SiftMatching.use_gpu 1",
-        # f"--SiftMatching.guided_matching 1"
+        # "--SiftMatching.min_num_inliers 50",
+        # f"--SiftMatching.guided_matching 1",
     ]
     if matching_method in ["vocab_tree", "sequential"]:
         vocab_tree_filename = get_vocab_tree()
@@ -255,10 +256,15 @@ def point_triangulation(
         verbose=verbose,
     ):
         run_command(" ".join(point_triangulation_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP point triangulation.")
 
 
 def bundle_adjustment(
-    *, input_path: str | Path, output_path: str | Path, verbose: bool = True
+    *,
+    input_path: str | Path,
+    output_path: str | Path,
+    verbose: bool = True,
+    max_num_iterations: int = 100,
 ):
     # shutil.copy(database_path, database_path.parent / "database.db_before_point_triangulation")
     bundle_adjuster_cmd = [
@@ -266,6 +272,8 @@ def bundle_adjustment(
         f"--input_path {input_path}",
         f"--output_path {output_path}",
         "--BundleAdjustment.refine_principal_point 1",
+        "--BundleAdjustment.function_tolerance 1e-6",
+        f"--BundleAdjustment.max_num_iterations {max_num_iterations}",
     ]
     rich.print(" ".join(bundle_adjuster_cmd))
     with status(
@@ -274,6 +282,35 @@ def bundle_adjustment(
         verbose=verbose,
     ):
         run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
+
+
+def rig_bundle_adjustment(
+    *,
+    input_path: str | Path,
+    output_path: str | Path,
+    verbose: bool = True,
+    max_num_iterations: int = 100,
+    rig_camera_json: str | Path,
+):
+
+    bundle_adjuster_cmd = [
+        f"{colmap_command} rig_bundle_adjuster",
+        f"--input_path {input_path}",
+        f"--output_path {output_path}",
+        f"--rig_config_path {rig_camera_json}",
+        "--BundleAdjustment.refine_principal_point 1",
+        "--BundleAdjustment.function_tolerance 1e-6",
+        f"--BundleAdjustment.max_num_iterations {max_num_iterations}",
+    ]
+    rich.print(" ".join(bundle_adjuster_cmd))
+    with status(
+        msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
+        spinner="circle",
+        verbose=verbose,
+    ):
+        run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
 
 
 def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False):
@@ -295,6 +332,7 @@ def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False
         verbose=verbose,
     ):
         run_command(" ".join(model_alignment_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP model alignment.")
 
 
 @dataclass
@@ -311,11 +349,18 @@ class ColmapRunner:
     meta_file: Path | None = None
     image_extension: str = "png"
 
+    rig_bundle_adjustment: bool = False
+
     def __post_init__(self):
         if self.prior_injection:
             assert (
                 self.meta_file is not None
             ), "meta_file is required for prior injection."
+        if self.rig_bundle_adjustment:
+            assert (
+                self.prior_injection
+            ), "Rig bundle adjustment requires prior injection."
+            assert self.meta_file is not None
 
     def main(self):
         data_dir = self.data_dir
@@ -377,11 +422,19 @@ class ColmapRunnerFromScratch(ColmapRunner):
             verbose=True,
             sparse_dir=exp_dir / "sparse",
         )
-        bundle_adjustment(
-            input_path=exp_dir / "sparse" / "0",
-            output_path=exp_dir / "sparse" / "0",
-            verbose=True,
-        )
+        if self.rig_bundle_adjustment:
+            rig_bundle_adjustment(
+                input_path=exp_dir / "sparse" / "0",
+                output_path=exp_dir / "sparse" / "0",
+                verbose=True,
+                rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
+            )
+        else:
+            bundle_adjustment(
+                input_path=exp_dir / "sparse" / "0",
+                output_path=exp_dir / "sparse" / "0",
+                verbose=True,
+            )
         if self.prior_injection:
             model_alignment(database_path, exp_dir / "sparse" / "0", verbose=False)
 
@@ -402,7 +455,7 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
         database_path = data_dir / self.experiment_name / "database.db"
         prior_dir = exp_dir / "priors"
         super().main()
-
+        max_num_iterations = 100 // self.refinement_time
         for i in range(self.refinement_time):
             if i == 0:
                 sparse_dir = prior_dir
@@ -415,11 +468,21 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
                 sparse_dir=exp_dir / "prior_sparse",
                 verbose=False,
             )
-            bundle_adjustment(
-                input_path=exp_dir / "prior_sparse",
-                output_path=exp_dir / "prior_sparse",
-                verbose=True,
-            )
+            if self.rig_bundle_adjustment:
+                rig_bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse",
+                    output_path=exp_dir / "prior_sparse",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                    rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
+                )
+            else:
+                bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse",
+                    output_path=exp_dir / "prior_sparse",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                )
             model_alignment(database_path, exp_dir / "prior_sparse", verbose=False)
 
 
