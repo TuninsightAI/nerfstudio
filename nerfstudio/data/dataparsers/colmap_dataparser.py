@@ -16,17 +16,17 @@
 from __future__ import annotations
 
 import math
-import numpy as np
 import sys
-import torch
-from PIL import Image
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
+from typing import List, Literal, Optional, Type
 
+import numpy as np
+import torch
+from PIL import Image
 from loguru import logger
 from rich.prompt import Confirm
-from typing import List, Literal, Optional, Type
 
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras
@@ -163,6 +163,9 @@ class ColmapDataParser(DataParser):
         # Parse frames
         # we want to sort all images based on im_id
         ordered_im_id = sorted(im_id_to_image.keys())
+
+        ignored_items = []
+
         for im_id in ordered_im_id:
             im_data = im_id_to_image[im_id]
             # NB: COLMAP uses Eigen / scalar-first quaternions
@@ -182,14 +185,12 @@ class ColmapDataParser(DataParser):
                 c2w[2, :] *= -1
 
             if not (self.config.data / self.config.images_path / im_data.name).exists():
-                logger.warning(
-                    f"Image {im_data.name} not found at {self.config.data / self.config.images_path}"
-                )
+                ignored_items.append(im_data.name)
                 continue
 
             frame = {
                 "file_path": (
-                        self.config.data / self.config.images_path / im_data.name
+                    self.config.data / self.config.images_path / im_data.name
                 ).as_posix(),
                 "transform_matrix": c2w,
                 "colmap_im_id": im_id,
@@ -214,6 +215,12 @@ class ColmapDataParser(DataParser):
                 ), "Multiple camera models are not supported"
             else:
                 camera_model = frame["camera_model"]
+
+        if len(ignored_items) > 0:
+            logger.warning(
+                f"{len(ignored_items)} Images are not found at {self.config.data / self.config.images_path}"
+            )
+            logger.warning(f"registering {len(frames)} Images")
 
         out = {"frames": frames}
         if self.config.assume_colmap_world_coordinate_convention:
@@ -654,7 +661,7 @@ class ColmapDataParser(DataParser):
                         break
                     df += 1
 
-                self._downscale_factor = 2 ** df
+                self._downscale_factor = 2**df
                 CONSOLE.log(f"Using image downscale factor of {self._downscale_factor}")
             else:
                 self._downscale_factor = self.config.downscale_factor
