@@ -55,13 +55,17 @@ class Extrinsic:
     def to_matrix(self, format_: t.Literal["3x4", "4x4"] = "4x4"):
         if format_ == "3x4":
             matrix = np.zeros((3, 4))
-            matrix[:3, :3] = qvec2rotmat(np.array([self.qw, self.qx, self.qy, self.qz]))
+            qvec = np.array([self.qw, self.qx, self.qy, self.qz])
+            qvec /= np.linalg.norm(qvec)
+            matrix[:3, :3] = qvec2rotmat(qvec)
             matrix[:3, 3] = np.array([self.px, self.py, self.pz])
 
             return matrix
         elif format_ == "4x4":
             matrix = np.eye(4)
-            matrix[:3, :3] = qvec2rotmat(np.array([self.qw, self.qx, self.qy, self.qz]))
+            qvec = np.array([self.qw, self.qx, self.qy, self.qz])
+            qvec /= np.linalg.norm(qvec)
+            matrix[:3, :3] = qvec2rotmat(qvec)
             matrix[:3, 3] = np.array([self.px, self.py, self.pz])
             return matrix
         else:
@@ -129,7 +133,9 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
     ]
 
     def create_rot(row):
-        return qvec2rotmat(np.array([row["qw"], row["qx"], row["qy"], row["qz"]]))
+        qvec = np.array([row["qw"], row["qx"], row["qy"], row["qz"]])
+        qvec /= np.linalg.norm(qvec)
+        return qvec2rotmat(qvec)
 
     def create_trans(row):
         return np.array([row["px"], row["py"], row["pz"]])
