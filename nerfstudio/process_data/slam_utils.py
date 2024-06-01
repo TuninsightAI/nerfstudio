@@ -63,10 +63,10 @@ def parse_slam_camera_params(camera_name: str, camera_params: dict):
     # du = 0
     # dv = 0
     intrinsics = camera_params["intrinsics"]["camera_matrix"]
-    out["fl_x"] = float(camera_params[0])
-    out["fl_y"] = float(camera_params[4])
-    out["cx"] = float(camera_params[2])
-    out["cy"] = float(camera_params[5])
+    out["fl_x"] = float(intrinsics[0])
+    out["fl_y"] = float(intrinsics[4])
+    out["cx"] = float(intrinsics[2])
+    out["cy"] = float(intrinsics[5])
     out["k1"] = 0.0
     out["k2"] = 0.0
     out["p1"] = 0.0

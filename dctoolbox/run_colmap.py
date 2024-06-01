@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import typing
 from dataclasses import dataclass
 from pathlib import Path
@@ -379,19 +380,25 @@ class ColmapRunner:
 
         database_path = data_dir / self.experiment_name / "database.db"
 
-        create_empty_database(database_path, verbose=True)
+        if not database_path.exists():
+            create_empty_database(database_path, verbose=True)
+        else:
+            logger.info(f"{database_path} already exists.")
 
         if self.prior_injection:
             meta_file = Path(self.meta_file)
             assert meta_file.exists(), f"{meta_file} does not exist."
-            injection_to_empty_database(
-                meta_json_path=meta_file,
-                database_path=database_path,
-                verbose=True,
-                output_dir=prior_dir,
-                image_dir=image_dir,
-                image_extension=self.image_extension,
-            )
+            try:
+                injection_to_empty_database(
+                    meta_json_path=meta_file,
+                    database_path=database_path,
+                    verbose=True,
+                    output_dir=prior_dir,
+                    image_dir=image_dir,
+                    image_extension=self.image_extension,
+                )
+            except sqlite3.IntegrityError:
+                logger.info("Prior already injected. Skipping...")
 
         feature_extraction(database_path, image_dir, mask_dir, verbose=False)
 

@@ -100,7 +100,7 @@ class SlamDataParserConfig(DataParserConfig):
     """Path to masks directory. If not set, masks are not loaded."""
     depths_path: Optional[Path] = None
     """Path to depth maps directory. If not set, depths are not loaded."""
-    colmap_path: Path = Path("colmap/sparse/0")
+    meta_path: Path = Path("")
     """Path to the colmap reconstruction directory relative to the data path."""
     load_3D_points: bool = False
     """Whether to load the 3D points from the colmap reconstruction. This is helpful for Gaussian splatting and
@@ -291,7 +291,7 @@ class SlamDataParser(DataParser):
         assert (
             self.config.data.exists()
         ), f"Data directory {self.config.data} does not exist."
-        colmap_path = self.config.data / self.config.colmap_path
+        colmap_path = self.config.data / self.config.meta_path
         assert colmap_path.exists(), f"Colmap path {colmap_path} does not exist."
 
         meta = self._get_all_images_and_cameras(colmap_path)
