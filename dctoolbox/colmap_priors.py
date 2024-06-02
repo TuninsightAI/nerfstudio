@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import json
-import numpy as np
 import os
-import rich
-import torch
+import typing as t
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
+import rich
+import torch
+from loguru import logger
 
 from dctoolbox.utils import quat2rotation, rotation2quat
 
@@ -47,6 +52,7 @@ class ColmapPriorConfig:
     """path to the reference folder"""
     image_dir: Path | None = None
     """image-dir, to check if the image name and the prior name corresponds"""
+    image_extension: str = "png"
 
     def __post_init__(self):
 
@@ -56,7 +62,66 @@ class ColmapPriorConfig:
         if self.image_dir is not None:
             assert self.image_dir.exists(), self.image_dir
 
-    def main(self):
+    def _dump_rig_camera_config(self, observations: t.List[Image]):
+        camera_nums = set([x.cam_no for x in observations])
+        if min(camera_nums) == 0:
+            camera_nums = set([x.cam_no + 1 for x in observations])
+
+        observed_camera_prefix = [str(x.image_name).split("/")[0] for x in observations]
+        observed_camera_nums = [x.cam_no for x in observations]
+        if min(observed_camera_nums) == 0:
+            observed_camera_nums = [x.cam_no + 1 for x in observations]
+
+        nested_camera_num_prefix = list(zip(observed_camera_nums, observed_camera_prefix))
+        nested_camera_num_prefix = set(nested_camera_num_prefix)
+        assert camera_nums == set(observed_camera_nums)
+        rig_data = [
+            {"ref_camera_id": 1,
+             "cameras": [
+                 {
+                     "camera_id": camera_num,
+                     "image_prefix": prefix,
+                 } for camera_num, prefix in nested_camera_num_prefix
+             ]}
+        ]
+        with open(self.output_folder / "rig_cameras.json", "w") as f:
+            json.dump(rig_data, f, indent=4)
+        """
+        [
+    //   {
+    //     "ref_camera_id": 1,
+    //     "cameras":
+    //     [
+    //       {
+    //           "camera_id": 1,
+    //           "image_prefix": "left1_image"
+    //           "cam_from_rig_rotation": [1, 0, 0, 0],
+    //           "cam_from_rig_translation": [0, 0, 0]
+    //       },
+    //       {
+    //           "camera_id": 2,
+    //           "image_prefix": "left2_image"
+    //           "cam_from_rig_rotation": [1, 0, 0, 0],
+    //           "cam_from_rig_translation": [0, 0, 1]
+    //       },
+    //       {
+    //           "camera_id": 3,
+    //           "image_prefix": "right1_image"
+    //           "cam_from_rig_rotation": [1, 0, 0, 0],
+    //           "cam_from_rig_translation": [0, 0, 2]
+    //       },
+    //       {
+    //           "camera_id": 4,
+    //           "image_prefix": "right2_image"
+    //           "cam_from_rig_rotation": [1, 0, 0, 0],
+    //           "cam_from_rig_translation": [0, 0, 3]
+    //       }
+    //     ]
+    //   }
+    // ]
+        """
+
+    def _main(self):
         with open(self.meta_json) as f:
             data = json.load(f)
 
@@ -129,7 +194,7 @@ class ColmapPriorConfig:
         if self.image_dir is not None:
             image_names = [
                 str(x.relative_to(self.image_dir))
-                for x in self.image_dir.rglob("*.png")
+                for x in self.image_dir.rglob(f"*.{self.image_extension}")
             ]
             previous_observation_length = len(observations)
 
@@ -176,3 +241,12 @@ class ColmapPriorConfig:
                     intrinsics[1][2],
                 ]
                 f.write(" ".join([str(v) for v in params]) + "\n")
+
+        return observations
+
+    def main(self):
+        observations = self._main()
+        try:
+            self._dump_rig_camera_config(observations)
+        except Exception as e:
+            logger.error(e)

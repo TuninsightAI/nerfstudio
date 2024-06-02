@@ -134,8 +134,10 @@ class NerfactoModelConfig(ModelConfig):
     """Average initial density output from MLP. """
     camera_optimizer: CameraOptimizerConfig = field(default_factory=lambda: CameraOptimizerConfig(mode="SO3xR3"))
     """Config of the camera optimizer to use"""
-    rbg_loss: Literal["mse", "yiq"] = "mse"
+    rgb_loss: Literal["mse", "yiq"] = "mse"
     """ rgb loss used for photometric supervision """
+    yiq_brightness: float = 0.1
+    """ brightness weight for YIQ loss """
 
 
 class NerfactoModel(Model):
@@ -246,7 +248,7 @@ class NerfactoModel(Model):
         self.normals_shader = NormalsShader()
 
         # losses
-        self.rgb_loss = MSELoss() if self.config.rbg_loss == "mse" else YIQLoss((0.2, 1.0, 1.0))
+        self.rgb_loss = MSELoss() if self.config.rgb_loss == "mse" else YIQLoss((self.config.yiq_brightness, 1.0, 1.0))
         self.step = 0
         # metrics
         from torchmetrics.functional import structural_similarity_index_measure

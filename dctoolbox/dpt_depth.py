@@ -1,10 +1,10 @@
 """Compute depth maps for images in the input folder.
 """
-import glob
 import imageio
 import numpy as np
 import os
 import torch
+from itertools import chain
 from matplotlib import pyplot as plt
 from pathlib import Path
 from torchvision.transforms import Compose
@@ -64,8 +64,13 @@ def run(input_dir: Path, output_dir: Path, model_path: Path = __default_model_pa
     model.to(device)
 
     # get input
-    img_names = glob.glob(os.path.join(input_dir, "*"))
-
+    img_names = sorted(
+        chain(
+            Path(input_dir).rglob("*.png"),
+            Path(input_dir).rglob("*.jpg"),
+            Path(input_dir).rglob("*.jpeg"),
+        )
+    )
     # create output folder
     os.makedirs(output_dir, exist_ok=True)
 
@@ -77,7 +82,7 @@ def run(input_dir: Path, output_dir: Path, model_path: Path = __default_model_pa
 
         # input
 
-        img = read_image(img_name)
+        img = read_image(str(img_name))
 
         img_input = transform({"image": img})["image"]
 
@@ -101,8 +106,9 @@ def run(input_dir: Path, output_dir: Path, model_path: Path = __default_model_pa
         )
 
         filename = os.path.join(
-            output_dir, os.path.splitext(os.path.basename(img_name))[0]
+            output_dir, img_name.relative_to(input_dir).parent / img_name.stem
         )
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
         np.savez(filename, pred=prediction)
         normalize_pred = np.clip(
             np.clip(

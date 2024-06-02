@@ -1,13 +1,17 @@
-import appdirs
+from __future__ import annotations
+
 import os
+import shutil
+import sqlite3
+import typing
+from dataclasses import dataclass
+from pathlib import Path
+
+import appdirs
 import requests
 import rich
-import shutil
-import typing
 import tyro
-from dataclasses import dataclass
 from loguru import logger
-from pathlib import Path
 from rich.console import Console
 from rich.progress import track
 from rich.prompt import Confirm
@@ -89,12 +93,16 @@ def injection_to_empty_database(
     output_dir: Path,
     database_path: Path,
     image_dir: Path | None = None,
+    image_extension: str = "png",
     verbose: bool = False,
 ):
     assert_dataset_path(database_path)
 
     priorConfig = ColmapPriorConfig(
-        meta_json=meta_json_path, output_folder=output_dir, image_dir=image_dir
+        meta_json=meta_json_path,
+        output_folder=output_dir,
+        image_dir=image_dir,
+        image_extension=image_extension,
     )
     priorConfig.main()
 
@@ -112,9 +120,24 @@ def feature_extraction(
     database_path = Path(database_path)
     assert_dataset_path(database_path=database_path)
 
-    shutil.copy(
-        database_path, database_path.parent / "database.db_before_feature_extraction"
-    )
+    # check consistency of image and mask
+    if camera_mask_folder is not None:
+        mask_names = sorted(
+            set(
+                [
+                    x.stem
+                    for x in camera_mask_folder.rglob("*.png")
+                    if len(Path(x.stem).suffix) > 0
+                ]
+            )
+        )
+        image_names = sorted(
+            set([x.name for x in image_folder.rglob("*") if x.is_file()])
+        )
+        assert mask_names == image_names, (
+            f"Mask and image names are not consistent. "
+            f"mask: {mask_names[:5]}, image: {image_names[:5]}"
+        )
 
     feature_extractor_cmd = [
         f"{colmap_command} feature_extractor",
@@ -152,7 +175,8 @@ def feature_matching(
         f"{colmap_command} {matching_method}_matcher",
         f"--database_path {database_path}",
         f"--SiftMatching.use_gpu 1",
-        # f"--SiftMatching.guided_matching 1"
+        # "--SiftMatching.min_num_inliers 50",
+        # f"--SiftMatching.guided_matching 1",
     ]
     if matching_method in ["vocab_tree", "sequential"]:
         vocab_tree_filename = get_vocab_tree()
@@ -233,10 +257,15 @@ def point_triangulation(
         verbose=verbose,
     ):
         run_command(" ".join(point_triangulation_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP point triangulation.")
 
 
 def bundle_adjustment(
-    *, input_path: str | Path, output_path: str | Path, verbose: bool = True
+    *,
+    input_path: str | Path,
+    output_path: str | Path,
+    verbose: bool = True,
+    max_num_iterations: int = 100,
 ):
     # shutil.copy(database_path, database_path.parent / "database.db_before_point_triangulation")
     bundle_adjuster_cmd = [
@@ -244,6 +273,8 @@ def bundle_adjustment(
         f"--input_path {input_path}",
         f"--output_path {output_path}",
         "--BundleAdjustment.refine_principal_point 1",
+        "--BundleAdjustment.function_tolerance 1e-6",
+        f"--BundleAdjustment.max_num_iterations {max_num_iterations}",
     ]
     rich.print(" ".join(bundle_adjuster_cmd))
     with status(
@@ -252,6 +283,35 @@ def bundle_adjustment(
         verbose=verbose,
     ):
         run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
+
+
+def rig_bundle_adjustment(
+    *,
+    input_path: str | Path,
+    output_path: str | Path,
+    verbose: bool = True,
+    max_num_iterations: int = 100,
+    rig_camera_json: str | Path,
+):
+
+    bundle_adjuster_cmd = [
+        f"{colmap_command} rig_bundle_adjuster",
+        f"--input_path {input_path}",
+        f"--output_path {output_path}",
+        f"--rig_config_path {rig_camera_json}",
+        "--BundleAdjustment.refine_principal_point 1",
+        "--BundleAdjustment.function_tolerance 1e-6",
+        f"--BundleAdjustment.max_num_iterations {max_num_iterations}",
+    ]
+    rich.print(" ".join(bundle_adjuster_cmd))
+    with status(
+        msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
+        spinner="circle",
+        verbose=verbose,
+    ):
+        run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
 
 
 def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False):
@@ -273,6 +333,7 @@ def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False
         verbose=verbose,
     ):
         run_command(" ".join(model_alignment_cmd), verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done COLMAP model alignment.")
 
 
 @dataclass
@@ -287,17 +348,30 @@ class ColmapRunner:
 
     prior_injection: bool = False
     meta_file: Path | None = None
+    image_extension: str = "png"
+
+    rig_bundle_adjustment: bool = False
 
     def __post_init__(self):
         if self.prior_injection:
             assert (
                 self.meta_file is not None
             ), "meta_file is required for prior injection."
+        if self.rig_bundle_adjustment:
+            assert (
+                self.prior_injection
+            ), "Rig bundle adjustment requires prior injection."
+            assert self.meta_file is not None
 
     def main(self):
         data_dir = self.data_dir
         image_dir = data_dir / self.image_folder_name
-        mask_dir = data_dir / self.mask_folder_name
+        assert image_dir.exists(), f"{image_dir} does not exist."
+        if self.mask_folder_name is not None:
+            mask_dir = data_dir / self.mask_folder_name
+            assert mask_dir.exists(), f"{mask_dir} does not exist."
+        else:
+            mask_dir = None
         exp_dir = data_dir / self.experiment_name
         prior_dir = exp_dir / "priors"
 
@@ -306,18 +380,25 @@ class ColmapRunner:
 
         database_path = data_dir / self.experiment_name / "database.db"
 
-        create_empty_database(database_path, verbose=True)
+        if not database_path.exists():
+            create_empty_database(database_path, verbose=True)
+        else:
+            logger.info(f"{database_path} already exists.")
 
         if self.prior_injection:
             meta_file = Path(self.meta_file)
             assert meta_file.exists(), f"{meta_file} does not exist."
-            injection_to_empty_database(
-                meta_json_path=meta_file,
-                database_path=database_path,
-                verbose=True,
-                output_dir=prior_dir,
-                image_dir=image_dir,
-            )
+            try:
+                injection_to_empty_database(
+                    meta_json_path=meta_file,
+                    database_path=database_path,
+                    verbose=True,
+                    output_dir=prior_dir,
+                    image_dir=image_dir,
+                    image_extension=self.image_extension,
+                )
+            except sqlite3.IntegrityError:
+                logger.info("Prior already injected. Skipping...")
 
         feature_extraction(database_path, image_dir, mask_dir, verbose=False)
 
@@ -348,11 +429,19 @@ class ColmapRunnerFromScratch(ColmapRunner):
             verbose=True,
             sparse_dir=exp_dir / "sparse",
         )
-        bundle_adjustment(
-            input_path=exp_dir / "sparse" / "0",
-            output_path=exp_dir / "sparse" / "0",
-            verbose=True,
-        )
+        if self.rig_bundle_adjustment:
+            rig_bundle_adjustment(
+                input_path=exp_dir / "sparse" / "0",
+                output_path=exp_dir / "sparse" / "0",
+                verbose=True,
+                rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
+            )
+        else:
+            bundle_adjustment(
+                input_path=exp_dir / "sparse" / "0",
+                output_path=exp_dir / "sparse" / "0",
+                verbose=True,
+            )
         if self.prior_injection:
             model_alignment(database_path, exp_dir / "sparse" / "0", verbose=False)
 
@@ -373,7 +462,7 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
         database_path = data_dir / self.experiment_name / "database.db"
         prior_dir = exp_dir / "priors"
         super().main()
-
+        max_num_iterations = 100 // self.refinement_time
         for i in range(self.refinement_time):
             if i == 0:
                 sparse_dir = prior_dir
@@ -386,11 +475,21 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
                 sparse_dir=exp_dir / "prior_sparse",
                 verbose=False,
             )
-            bundle_adjustment(
-                input_path=exp_dir / "prior_sparse",
-                output_path=exp_dir / "prior_sparse",
-                verbose=True,
-            )
+            if self.rig_bundle_adjustment:
+                rig_bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse",
+                    output_path=exp_dir / "prior_sparse",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                    rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
+                )
+            else:
+                bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse",
+                    output_path=exp_dir / "prior_sparse",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                )
             model_alignment(database_path, exp_dir / "prior_sparse", verbose=False)
 
 

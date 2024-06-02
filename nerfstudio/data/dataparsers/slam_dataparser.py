@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sys
 from dataclasses import dataclass, field
@@ -43,7 +44,7 @@ from nerfstudio.data.utils.dataparsers_utils import (
     get_train_eval_split_fraction,
     get_train_eval_split_interval,
 )
-from nerfstudio.process_data.colmap_utils import parse_colmap_camera_params
+from nerfstudio.process_data.slam_utils import parse_slam_camera_params, parse_num2image
 from nerfstudio.utils.rich_utils import CONSOLE, status
 from nerfstudio.utils.scripts import run_command
 
@@ -51,10 +52,10 @@ MAX_AUTO_RESOLUTION = 1600
 
 
 @dataclass
-class ColmapDataParserConfig(DataParserConfig):
+class SlamDataParserConfig(DataParserConfig):
     """Nerfstudio dataset config"""
 
-    _target: Type = field(default_factory=lambda: ColmapDataParser)
+    _target: Type = field(default_factory=lambda: SlamDataParser)
     """target class to instantiate"""
     data: Path = Path()
     """Directory or explicit json file path specifying location of data."""
@@ -99,9 +100,9 @@ class ColmapDataParserConfig(DataParserConfig):
     """Path to masks directory. If not set, masks are not loaded."""
     depths_path: Optional[Path] = None
     """Path to depth maps directory. If not set, depths are not loaded."""
-    colmap_path: Path = Path("colmap/sparse/0")
+    meta_path: Path = Path("")
     """Path to the colmap reconstruction directory relative to the data path."""
-    load_3D_points: bool = True
+    load_3D_points: bool = False
     """Whether to load the 3D points from the colmap reconstruction. This is helpful for Gaussian splatting and
     generally unused otherwise, but it's typically harmless so we default to True."""
     max_2D_matches_per_3D_point: int = 0
@@ -111,7 +112,7 @@ class ColmapDataParserConfig(DataParserConfig):
     """sort the images by id or filename. This is useful when the images are not sorted by id in the colmap model."""
 
 
-class ColmapDataParser(DataParser):
+class SlamDataParser(DataParser):
     """COLMAP DatasetParser.
     Expects a folder with the following structure:
         images/ # folder containing images used to create the COLMAP model
@@ -131,34 +132,28 @@ class ColmapDataParser(DataParser):
     use different rounding when computing the image resolution).
     """
 
-    config: ColmapDataParserConfig
+    config: SlamDataParserConfig
 
-    def __init__(self, config: ColmapDataParserConfig):
+    def __init__(self, config: SlamDataParserConfig):
         super().__init__(config)
         self.config = config
         self._downscale_factor = None
 
-    def _get_all_images_and_cameras(self, recon_dir: Path):
-        if (recon_dir / "cameras.txt").exists():
-            cam_id_to_camera = colmap_utils.read_cameras_text(recon_dir / "cameras.txt")
-            im_id_to_image = colmap_utils.read_images_text(recon_dir / "images.txt")
-        elif (recon_dir / "cameras.bin").exists():
-            cam_id_to_camera = colmap_utils.read_cameras_binary(
-                recon_dir / "cameras.bin"
-            )
-            im_id_to_image = colmap_utils.read_images_binary(recon_dir / "images.bin")
-        else:
-            raise ValueError(
-                f"Could not find cameras.txt or cameras.bin in {recon_dir}"
-            )
+    def _get_all_images_and_cameras(self, meta_json: Path):
+        with open(meta_json, "r") as f:
+            meta = json.load(f)
+        calibration_info = meta["calibrationInfo"]
+        frame_info = meta["data"]
 
         cameras = {}
         frames = []
         camera_model = None
 
         # Parse cameras
-        for cam_id, cam_data in cam_id_to_camera.items():
-            cameras[cam_id] = parse_colmap_camera_params(cam_data)
+        for cam_id, cam_data in enumerate(calibration_info.items(), start=1):
+            cameras[cam_id] = parse_slam_camera_params(*cam_data)
+
+        im_id_to_image = parse_num2image(frame_info, cameras)
 
         # Parse frames
         # we want to sort all images based on im_id
@@ -296,7 +291,7 @@ class ColmapDataParser(DataParser):
         assert (
             self.config.data.exists()
         ), f"Data directory {self.config.data} does not exist."
-        colmap_path = self.config.data / self.config.colmap_path
+        colmap_path = self.config.data / self.config.meta_path
         assert colmap_path.exists(), f"Colmap path {colmap_path} does not exist."
 
         meta = self._get_all_images_and_cameras(colmap_path)
@@ -459,9 +454,9 @@ class ColmapDataParser(DataParser):
             dataparser_scale=scale_factor,
             dataparser_transform=transform_matrix,
             metadata={
-                "depth_filenames": depth_filenames
-                if len(depth_filenames) > 0
-                else None,
+                "depth_filenames": (
+                    depth_filenames if len(depth_filenames) > 0 else None
+                ),
                 "depth_unit_scale_factor": self.config.depth_unit_scale_factor,
                 **metadata,
             },
