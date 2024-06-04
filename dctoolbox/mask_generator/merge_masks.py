@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing as t
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,10 +12,10 @@ from tqdm import tqdm
 
 @dataclass
 class MergeMasksConfig:
-    mask_dirs: t.List[str]
+    mask_dirs: t.List[str | Path]
     """ Path to the Image folder """
 
-    output_dir: str
+    output_dir: Path
     """ Path to the merged mask folder"""
 
     def __post_init__(self):
@@ -37,9 +39,9 @@ class MergeMasksConfig:
             merged_mask = 1 - np.array(sum(masks)).astype(np.uint8) / 255
             Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent).mkdir(parents=True, exist_ok=True)
 
-            Image.fromarray((merged_mask * 255).astype(np.uint8)).save(
-                Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent,
-                     cur_masks[0].name + ".png").as_posix())
+            # Image.fromarray((merged_mask * 255).astype(np.uint8)).save(
+            #     Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent,
+            #          cur_masks[0].name + ".png").as_posix())
             Image.fromarray((merged_mask * 255).astype(np.uint8)).save(
                 Path(self.output_dir, cur_masks[0].relative_to(self.mask_dirs[0]).parent, cur_masks[0].name).as_posix())
 

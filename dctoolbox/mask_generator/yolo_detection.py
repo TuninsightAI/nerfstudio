@@ -69,9 +69,10 @@ class YoloMaskGeneratorConfig:
 
         for f in tqdm(sorted(self.image_dir.rglob(f"*{self.extension}")), desc="Generating masks"):
             mask = predict_given_image_path(model, f)
-            Image.fromarray(mask).save(
-                Path(self.mask_dir, f.stem + ".png").as_posix(),
-            )
+            relative_path = f.relative_to(self.image_dir)
+            save_path = Path(self.mask_dir, str(relative_path) + ".png")
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(mask).save(save_path.as_posix())
 
 
 if __name__ == "__main__":
