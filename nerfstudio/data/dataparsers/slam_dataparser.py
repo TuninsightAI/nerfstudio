@@ -192,10 +192,12 @@ class SlamDataParser(DataParser):
             }
             frame.update(cameras[im_data.camera_id])
             if self.config.masks_path is not None:
+                proposal1 = (self.config.data / self.config.masks_path / (im_data.name + ".png"))
+                proposal2 = (self.config.data / self.config.masks_path / im_data.name).with_suffix(".png")
+                assert proposal1.exists() or proposal2.exists(), f"Mask not found for {im_data.name}"
+
                 frame["mask_path"] = (
-                    (self.config.data / self.config.masks_path / im_data.name)
-                    .with_suffix(".png")
-                    .as_posix()
+                    proposal1 if proposal1.exists() else proposal2
                 )
             if self.config.depths_path is not None:
                 frame["depth_path"] = (

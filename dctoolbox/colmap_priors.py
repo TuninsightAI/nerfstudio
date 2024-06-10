@@ -196,7 +196,6 @@ class ColmapPriorConfig:
                 for x in self.image_dir.rglob(f"*.{self.image_extension}")
             ]
             previous_observation_length = len(observations)
-
             observations = [x for x in observations if x.image_name in image_names]
 
             cur_observation_length = len(observations)
@@ -210,7 +209,6 @@ class ColmapPriorConfig:
                     f"Prune observations from {previous_observation_length} to {cur_observation_length}, "
                     f"due to inconsistency of prior and provided images."
                 )
-                breakpoint()
             else:
                 raise RuntimeError(f"provided images are greater than the prior.")
 
