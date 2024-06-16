@@ -15,15 +15,14 @@
 """
 Multi Layer Perceptron
 """
-from typing import Literal, Optional, Set, Tuple, Union
-
 import numpy as np
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Shaped
 from torch import Tensor, nn
+from typing import Literal, Optional, Set, Tuple, Union
 
 from nerfstudio.field_components.base_field_component import FieldComponent
-from nerfstudio.field_components.encodings import HashEncoding
+from nerfstudio.field_components.encodings import HashEncoding, TripleHashEncoding
 from nerfstudio.utils.external import TCNN_EXISTS, tcnn
 from nerfstudio.utils.printing import print_tcnn_speed_warning
 from nerfstudio.utils.rich_utils import CONSOLE
@@ -292,3 +291,83 @@ class MLPWithHashEncoding(FieldComponent):
 
     def forward(self, in_tensor: Float[Tensor, "*bs in_dim"]) -> Float[Tensor, "*bs out_dim"]:
         return self.model(in_tensor)
+
+
+class MLPWithTripleHashEncoding(FieldComponent):
+    """Multilayer perceptron with hash encoding
+
+    Args:
+        num_levels: Number of feature grids.
+        min_res: Resolution of smallest feature grid.
+        max_res: Resolution of largest feature grid.
+        log2_hashmap_size: Size of hash map is 2^log2_hashmap_size.
+        features_per_level: Number of features per level.
+        hash_init_scale: Value to initialize hash grid.
+        interpolation: Interpolation override for tcnn hashgrid. Not supported for torch unless linear.
+        num_layers: Number of network layers
+        layer_width: Width of each MLP layer
+        out_dim: Output layer dimension. Uses layer_width if None.
+        activation: intermediate layer activation function.
+        out_activation: output activation function.
+    """
+
+    def __init__(
+            self,
+            num_levels: int = 16,
+            min_res: int = 16,
+            max_res: int = 1024,
+            log2_hashmap_size: int = 19,
+            features_per_level: int = 2,
+            hash_init_scale: float = 0.001,
+            interpolation: Optional[Literal["Nearest", "Linear", "Smoothstep"]] = None,
+            num_layers: int = 2,
+            layer_width: int = 64,
+            out_dim: Optional[int] = None,
+            skip_connections: Optional[Tuple[int]] = None,
+            activation: Optional[nn.Module] = nn.ReLU(),
+            out_activation: Optional[nn.Module] = None,
+    ) -> None:
+        super().__init__()
+        self.in_dim = 3
+
+        self.num_levels = num_levels
+        self.min_res = min_res
+        self.max_res = max_res
+        self.features_per_level = features_per_level
+        self.hash_init_scale = hash_init_scale
+        self.log2_hashmap_size = log2_hashmap_size
+        self.hash_table_size = 2 ** log2_hashmap_size
+
+        self.growth_factor = np.exp((np.log(max_res) - np.log(min_res)) / (num_levels - 1)) if num_levels > 1 else 1
+
+        self.out_dim = out_dim if out_dim is not None else layer_width
+        self.num_layers = num_layers
+        self.layer_width = layer_width
+        self.skip_connections = skip_connections
+        self._skip_connections: Set[int] = set(skip_connections) if skip_connections else set()
+        self.activation = activation
+        self.out_activation = out_activation
+        self.net = None
+
+        self.tcnn_encoding = None
+
+        self.hash_encoding = TripleHashEncoding(
+            num_levels=self.num_levels,
+            min_res=self.min_res,
+            max_res=self.max_res,
+            log2_hashmap_size=self.log2_hashmap_size,
+            features_per_level=self.features_per_level,
+        )
+        self.mlp = MLP(
+            in_dim=self.hash_encoding.get_out_dim(),
+            num_layers=self.num_layers,
+            layer_width=self.layer_width,
+            out_dim=self.out_dim,
+            skip_connections=self.skip_connections,
+            activation=self.activation,
+            out_activation=self.out_activation,
+            implementation="tcnn",
+        )
+
+    def forward(self, in_tensor: Shaped[Tensor, "*bs input_dim"]) -> Shaped[Tensor, "*bs output_dim"]:
+        return self.mlp(self.hash_encoding(in_tensor))

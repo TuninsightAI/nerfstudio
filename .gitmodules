@@ -1,0 +1,3 @@
+[submodule "third_party/kplanes_nerfstudio"]
+	path = third_party/kplanes_nerfstudio
+	url = https://github.com/Giodiro/kplanes_nerfstudio.git

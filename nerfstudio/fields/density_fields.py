@@ -16,16 +16,15 @@
 Proposal network field.
 """
 
-
-from typing import Literal, Optional, Tuple
-
 import torch
+from loguru import logger
 from torch import Tensor, nn
+from typing import Literal, Optional, Tuple
 
 from nerfstudio.cameras.rays import RaySamples
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.field_components.activations import trunc_exp
-from nerfstudio.field_components.encodings import HashEncoding
+from nerfstudio.field_components.encodings import HashEncoding, TripleHashEncoding
 from nerfstudio.field_components.mlp import MLP
 from nerfstudio.field_components.spatial_distortions import SpatialDistortion
 from nerfstudio.fields.base_field import Field
@@ -58,6 +57,7 @@ class HashMLPDensityField(Field):
         features_per_level: int = 2,
         average_init_density: float = 1.0,
         implementation: Literal["tcnn", "torch"] = "tcnn",
+            use_triplanes: bool = False,
     ) -> None:
         super().__init__()
         self.register_buffer("aabb", aabb)
@@ -69,14 +69,24 @@ class HashMLPDensityField(Field):
         self.register_buffer("num_levels", torch.tensor(num_levels))
         self.register_buffer("log2_hashmap_size", torch.tensor(log2_hashmap_size))
 
-        self.encoding = HashEncoding(
-            num_levels=num_levels,
-            min_res=base_res,
-            max_res=max_res,
-            log2_hashmap_size=log2_hashmap_size,
-            features_per_level=features_per_level,
-            implementation=implementation,
-        )
+        if not use_triplanes:
+            self.encoding = HashEncoding(
+                num_levels=num_levels,
+                min_res=base_res,
+                max_res=max_res,
+                log2_hashmap_size=log2_hashmap_size,
+                features_per_level=features_per_level,
+                implementation=implementation,
+            )
+        else:
+            logger.info("Using triplanes")
+            self.encoding = TripleHashEncoding(
+                num_levels=num_levels,
+                min_res=base_res,
+                max_res=max_res,
+                log2_hashmap_size=log2_hashmap_size,
+                features_per_level=features_per_level,
+            )
 
         if not self.use_linear:
             network = MLP(
