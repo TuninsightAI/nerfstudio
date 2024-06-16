@@ -17,17 +17,16 @@ from __future__ import annotations
 
 import json
 import math
-import sys
-from dataclasses import dataclass, field
-from functools import partial
-from pathlib import Path
-from typing import List, Literal, Optional, Type
-
 import numpy as np
+import sys
 import torch
 from PIL import Image
+from dataclasses import dataclass, field
+from functools import partial
 from loguru import logger
+from pathlib import Path
 from rich.prompt import Confirm
+from typing import List, Literal, Optional, Type
 
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras
@@ -102,9 +101,11 @@ class SlamDataParserConfig(DataParserConfig):
     """Path to depth maps directory. If not set, depths are not loaded."""
     meta_path: Path = Path("")
     """Path to the colmap reconstruction directory relative to the data path."""
-    load_3D_points: bool = False
+    load_3D_points: bool = True
     """Whether to load the 3D points from the colmap reconstruction. This is helpful for Gaussian splatting and
     generally unused otherwise, but it's typically harmless so we default to True."""
+    ply_path: Path | None = None
+    """slam point cloud path, should be in opencv space. If not set, the point cloud is not loaded."""
     max_2D_matches_per_3D_point: int = 0
     """Maximum number of 2D matches per 3D point. If set to -1, all 2D matches are loaded. 
     If set to 0, no 2D matches are loaded."""
@@ -198,7 +199,7 @@ class SlamDataParser(DataParser):
 
                 frame["mask_path"] = (
                     proposal1 if proposal1.exists() else proposal2
-                )
+                ).as_posix()
             if self.config.depths_path is not None:
                 frame["depth_path"] = (
                     (self.config.data / self.config.depths_path / im_data.name)
@@ -443,9 +444,12 @@ class SlamDataParser(DataParser):
 
         metadata = {}
         if self.config.load_3D_points:
+            assert self.config.ply_path is not None and self.config.ply_path.exists(), (
+                "Please provide a valid path to the slam point cloud in opencv space."
+            )
             # Load 3D points
             metadata.update(
-                self._load_3D_points(colmap_path, transform_matrix, scale_factor)
+                self._load_3D_points(self.config.ply_path, transform_matrix, scale_factor)
             )
 
         dataparser_outputs = DataparserOutputs(
@@ -456,9 +460,9 @@ class SlamDataParser(DataParser):
             dataparser_scale=scale_factor,
             dataparser_transform=transform_matrix,
             metadata={
-                "depth_filenames": (
-                    depth_filenames if len(depth_filenames) > 0 else None
-                ),
+                "depth_filenames": depth_filenames
+                if len(depth_filenames) > 0
+                else None,
                 "depth_unit_scale_factor": self.config.depth_unit_scale_factor,
                 **metadata,
             },
@@ -466,23 +470,14 @@ class SlamDataParser(DataParser):
         return dataparser_outputs
 
     def _load_3D_points(
-        self, colmap_path: Path, transform_matrix: torch.Tensor, scale_factor: float
+            self, ply_path: Path, transform_matrix: torch.Tensor, scale_factor: float
     ):
-        if (colmap_path / "points3D.bin").exists():
-            colmap_points = colmap_utils.read_points3D_binary(
-                colmap_path / "points3D.bin"
-            )
-        elif (colmap_path / "points3D.txt").exists():
-            colmap_points = colmap_utils.read_points3D_text(
-                colmap_path / "points3D.txt"
-            )
-        else:
-            raise ValueError(
-                f"Could not find points3D.txt or points3D.bin in {colmap_path}"
-            )
-        points3D = torch.from_numpy(
-            np.array([p.xyz for p in colmap_points.values()], dtype=np.float32)
-        )
+        assert ply_path.exists(), ply_path
+        import open3d as o3d
+        o3d_pcd = o3d.io.read_point_cloud(ply_path.as_posix())
+
+        points3D = torch.from_numpy(np.asarray(o3d_pcd.points, dtype=np.float32))
+
         points3D = (
             torch.cat(
                 (
@@ -497,31 +492,33 @@ class SlamDataParser(DataParser):
 
         # Load point colours
         points3D_rgb = torch.from_numpy(
-            np.array([p.rgb for p in colmap_points.values()], dtype=np.uint8)
+            np.asarray(o3d_pcd.colors, dtype=np.uint8)
         )
-        points3D_num_points = torch.tensor(
-            [len(p.image_ids) for p in colmap_points.values()], dtype=torch.int64
-        )
+
+        # points3D_num_points = torch.tensor(
+        #     [len(p.image_ids) for p in colmap_points.values()], dtype=torch.int64
+        # )
         out = {
             "points3D_xyz": points3D,
             "points3D_rgb": points3D_rgb,
-            "points3D_error": torch.from_numpy(
-                np.array([p.error for p in colmap_points.values()], dtype=np.float32)
-            ),
-            "points3D_num_points2D": points3D_num_points,
+            # "points3D_error": torch.from_numpy(
+            #     np.array([p.error for p in colmap_points.values()], dtype=np.float32)
+            # ),
+            # "points3D_num_points2D": points3D_num_points,
         }
         if self.config.max_2D_matches_per_3D_point != 0:
-            if (colmap_path / "images.txt").exists():
+            raise NotImplementedError("this is not supported in Slam.")
+            if (ply_path / "images.txt").exists():
                 im_id_to_image = colmap_utils.read_images_text(
-                    colmap_path / "images.txt"
+                    ply_path / "images.txt"
                 )
-            elif (colmap_path / "images.bin").exists():
+            elif (ply_path / "images.bin").exists():
                 im_id_to_image = colmap_utils.read_images_binary(
-                    colmap_path / "images.bin"
+                    ply_path / "images.bin"
                 )
             else:
                 raise ValueError(
-                    f"Could not find images.txt or images.bin in {colmap_path}"
+                    f"Could not find images.txt or images.bin in {ply_path}"
                 )
             downscale_factor = self._downscale_factor
             max_num_points = int(torch.max(points3D_num_points).item())
