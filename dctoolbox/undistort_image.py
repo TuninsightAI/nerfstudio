@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from multiprocessing.dummy import Pool
 from pathlib import Path
 
 import cv2
@@ -24,6 +25,23 @@ class UndistortConfig:
         assert self.cam_json.exists(), self.cam_json
         self.output_dir.mkdir(exist_ok=True, parents=True)
 
+    def process_image(self, filename, K, D):
+        relative_path = str(filename.relative_to(self.input_dir))
+        if self.key_frame_list is not None and relative_path not in self.key_frame_list:
+            return
+
+        img = cv2.imread(str(filename))
+
+        # Get the dimensions of the image
+        height, width = img.shape[:2]
+
+        # Undistort the image using the fisheye model
+        undistorted_img = cv2.fisheye.undistortImage(
+            img, K, D, Knew=K, new_size=(width, height))
+        output_path = self.output_dir / filename.relative_to(self.input_dir)
+        # Save the undistorted image
+        cv2.imwrite(output_path.as_posix(), undistorted_img)
+
     def main(self):
         with open(self.cam_json, 'r') as file:
             data = json.load(file)
@@ -31,27 +49,12 @@ class UndistortConfig:
         K = np.array(data['calibration']['intrinsics']['camera_matrix'], dtype=np.float64).reshape((3, 3))
         D = np.array(data['calibration']['intrinsics']['distortion_coeffs'], dtype=np.float64)
 
-        for filename in tqdm(sorted(self.input_dir.glob(f"*.{self.image_extension}")), desc="Processing images"):
-            # Read the image
-            relative_path = str(filename.relative_to(self.input_dir))
-            if self.key_frame_list is not None and relative_path not in self.key_frame_list:
-                continue
-
-            img = cv2.imread(str(filename))
-
-            # Get the dimensions of the image
-            height, width = img.shape[:2]
-
-            # Calculate the optimal new camera matrix
-            # new_camera_matrix, _ = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
-            #     K, D, (width, height), np.eye(3), balance=0)
-
-            # Undistort the image using the fisheye model
-            undistorted_img = cv2.fisheye.undistortImage(
-                img, K, D, Knew=K, new_size=(width, height))
-            output_path = self.output_dir / filename.relative_to(self.input_dir)
-            # Save the undistorted image
-            cv2.imwrite(output_path.as_posix(), undistorted_img)
+        images = sorted(self.input_dir.glob(f"*.{self.image_extension}"))
+        with Pool(32) as pool:
+            workers = pool.imap_unordered(lambda filename: self.process_image(filename, K, D),
+                                          images)
+            for _ in tqdm(workers, total=len(images), desc="Processing images"):
+                pass
 
 
 def _iterate_camera(data_frames: t.List[t.Dict[str, t.Any]], camera_name: str) -> t.List[str]:

@@ -94,7 +94,10 @@ class CameraInfo:
 def read_camera_info(camera_json_path: Path) -> CameraInfo:
     with camera_json_path.open("r") as f:
         cur_camera_json = json.load(f)
-
+    try:
+        name = cur_camera_json["calibration"]["cam_serial"]
+    except KeyError:
+        name = cur_camera_json["calibration"]["camSerial"]
     cur_camera_info = CameraInfo(
         fx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][0],
         fy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][4],
@@ -102,13 +105,12 @@ def read_camera_info(camera_json_path: Path) -> CameraInfo:
         cy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][5],
         width=cur_camera_json["calibration"]["intrinsics"]["width"],
         height=cur_camera_json["calibration"]["intrinsics"]["height"],
-        name=cur_camera_json["calibration"]["cam_serial"],
+        name=name,
         distortion_coeffs=cur_camera_json["calibration"]["intrinsics"][
             "distortion_coeffs"
         ],
     )
-
-    if "extrinsics" in cur_camera_json["calibration"]:
+    try:
         cur_camera_info.extrinsic = Extrinsic(
             qx=cur_camera_json["calibration"]["extrinsics"]["qx"],
             qy=cur_camera_json["calibration"]["extrinsics"]["qy"],
@@ -118,6 +120,17 @@ def read_camera_info(camera_json_path: Path) -> CameraInfo:
             py=cur_camera_json["calibration"]["extrinsics"]["py"],
             pz=cur_camera_json["calibration"]["extrinsics"]["pz"],
             camera_name=cur_camera_json["calibration"]["cam_serial"],
+        )
+    except KeyError:
+        cur_camera_info.extrinsic = Extrinsic(
+            qx=cur_camera_json["calibration"]["qx"],
+            qy=cur_camera_json["calibration"]["qy"],
+            qz=cur_camera_json["calibration"]["qz"],
+            qw=cur_camera_json["calibration"]["qw"],
+            px=cur_camera_json["calibration"]["x"],
+            py=cur_camera_json["calibration"]["y"],
+            pz=cur_camera_json["calibration"]["z"],
+            camera_name=cur_camera_json["calibration"]["camSerial"],
         )
     cur_camera_info.dataframe = pd.DataFrame(cur_camera_json["data"]).drop(
         ["dataID"], axis=1
@@ -132,7 +145,7 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
     dataframe = pd.DataFrame(lidar_json["data"])
     dataframe = dataframe[
         (dataframe["isKeyframe"] == True) & (dataframe["hasImg"] == True)
-    ]
+        ]
 
     def create_rot(row):
         qvec = np.array([row["qw"], row["qx"], row["qy"], row["qz"]])
@@ -156,7 +169,7 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
 
 
 def create_camera_pose(
-    camerainfo: CameraInfo, lidar_frame: pd.DataFrame
+        camerainfo: CameraInfo, lidar_frame: pd.DataFrame
 ) -> t.List[Extrinsic]:
     """
     return a list of c2w extrinsics for each image in the lidar frame
@@ -212,9 +225,14 @@ class InterfaceAdaptorConfig:
         ]
         camera_json_paths: t.List[Path] = [x / "camMeta.json" for x in camera_folders]
 
-        lidar_json_path: Path = (
-            self.slam_json_path.parent / slam_json["mainSensorSerial"] / "scanMeta.json"
-        )
+        try:
+            lidar_json_path: Path = (
+                    self.slam_json_path.parent / slam_json["mainSensorSerial"] / "scanMeta.json"
+            )
+        except KeyError:
+            lidar_json_path: Path = (
+                    self.slam_json_path.parent / slam_json["scanMeta"]
+            )
         lidar_info = read_lidar_info(lidar_json_path)
 
         camera_infos: t.List[CameraInfo] = [
@@ -230,7 +248,7 @@ class InterfaceAdaptorConfig:
         self._to_json(camera_infos, image_extrinics)
 
     def _to_json(
-        self, camera_infos: t.List[CameraInfo], image_extrinsics: t.List[Extrinsic]
+            self, camera_infos: t.List[CameraInfo], image_extrinsics: t.List[Extrinsic]
     ):
 
         calibrationInfo = dict()
@@ -272,10 +290,10 @@ class InterfaceAdaptorConfig:
                 batch = []
                 for cur_image_extrinsic in remaining_image_extrinsics:
                     if (
-                        Path(cur_image_extrinsic.name).relative_to(
-                            cur_image_extrinsic.camera_name
-                        )
-                        == cur_timestamp
+                            Path(cur_image_extrinsic.name).relative_to(
+                                cur_image_extrinsic.camera_name
+                            )
+                            == cur_timestamp
                     ):
                         batch.append(cur_image_extrinsic)
                     if len(batch) == 4:
