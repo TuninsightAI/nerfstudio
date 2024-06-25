@@ -225,8 +225,7 @@ class InterfaceAdaptorConfig:
 
         for cur_camera_info in camera_infos:
             ext_given_cam = create_camera_pose(cur_camera_info, lidar_info)
-            image_extrinics.append(ext_given_cam)
-        image_extrinics = list(chain(*zip(*image_extrinics)))
+            image_extrinics.extend(ext_given_cam)
 
         self._to_json(camera_infos, image_extrinics)
 

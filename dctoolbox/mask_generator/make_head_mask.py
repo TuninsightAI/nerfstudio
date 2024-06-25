@@ -15,7 +15,7 @@ class HeadMaskGeneratorConfig:
     mask_dir: Path
     """ Path to the mask folder"""
 
-    extension: t.Literal[".png", ".jpg"] = ".png"
+    extension: t.Literal[".png", ".jpg", ".jpeg"] = ".png"
 
     def __post_init__(self):
         assert self.image_dir.exists(), f"{self.image_dir} does not exist"
@@ -27,12 +27,14 @@ class HeadMaskGeneratorConfig:
             img = cv2.imread(str(f))
             out = np.zeros(img.shape[:2])
             h, w = out.shape
-            if "DECXIN2023012348" in f:
-                out[int(h * 0.7): h, 0: int(w * 0.3)] = 255
-            if "DECXIN2023012347" in f:
-                out[int(h * 0.7): h, w - int(w * 0.3): w] = 255
-            out_f = str(f).replace("." + self.extension, ".png")
-            cv2.imwrite(Path(self.mask_dir, Path(out_f).stem + ".png").as_posix(), out)
+            if "DECXIN2023012348" in str(f):
+                out[int(h * 0.8): h, 0: int(w * 0.2)] = 255
+            if "DECXIN2023012347" in str(f):
+                out[int(h * 0.8): h, w - int(w * 0.2): w] = 255
+            output_path = self.mask_dir / f.relative_to(self.image_dir)
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(Path(str(output_path) + ".png").as_posix(), out)
 
 
 if __name__ == "__main__":

@@ -193,5 +193,5 @@ camera_paths/
 
 # pixi environments
 .pixi
-/third_party
+#/third_party
 *.pt

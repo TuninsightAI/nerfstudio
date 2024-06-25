@@ -116,6 +116,7 @@ def feature_extraction(
     image_folder: str | Path,
     camera_mask_folder: Path | str = None,
     verbose: bool = True,
+        img_extension: str = "png"
 ):
     database_path = Path(database_path)
     assert_dataset_path(database_path=database_path)
@@ -132,9 +133,10 @@ def feature_extraction(
             )
         )
         image_names = sorted(
-            set([x.name for x in image_folder.rglob("*") if x.is_file()])
+            set([x.name for x in image_folder.rglob(f"*.{img_extension}") if
+                 x.is_file()])
         )
-        assert mask_names == image_names, (
+        assert set(image_names).issubset(set(mask_names)), (
             f"Mask and image names are not consistent. "
             f"mask: {mask_names[:5]}, image: {image_names[:5]}"
         )
@@ -400,7 +402,7 @@ class ColmapRunner:
             except sqlite3.IntegrityError:
                 logger.info("Prior already injected. Skipping...")
 
-        feature_extraction(database_path, image_dir, mask_dir, verbose=False)
+        feature_extraction(database_path, image_dir, mask_dir, verbose=False, img_extension=self.image_extension)
 
         feature_matching(self.matching_type, database_path, verbose=False)
 

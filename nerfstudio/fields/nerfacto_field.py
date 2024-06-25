@@ -17,10 +17,10 @@ Field for compound nerf model, adds scene contraction and image embeddings to in
 """
 
 
-from typing import Dict, Literal, Optional, Tuple
-
 import torch
+from loguru import logger
 from torch import Tensor, nn
+from typing import Dict, Literal, Optional, Tuple
 
 from nerfstudio.cameras.rays import RaySamples
 from nerfstudio.data.scene_box import SceneBox
@@ -35,7 +35,7 @@ from nerfstudio.field_components.field_heads import (
     TransientRGBFieldHead,
     UncertaintyFieldHead,
 )
-from nerfstudio.field_components.mlp import MLP, MLPWithHashEncoding
+from nerfstudio.field_components.mlp import MLP, MLPWithHashEncoding, MLPWithTripleHashEncoding
 from nerfstudio.field_components.spatial_distortions import SpatialDistortion
 from nerfstudio.fields.base_field import Field, get_normalized_directions
 
@@ -97,6 +97,7 @@ class NerfactoField(Field):
         spatial_distortion: Optional[SpatialDistortion] = None,
         average_init_density: float = 1.0,
         implementation: Literal["tcnn", "torch"] = "tcnn",
+            use_triplanes: bool = False,
     ) -> None:
         super().__init__()
 
@@ -131,20 +132,35 @@ class NerfactoField(Field):
         self.position_encoding = NeRFEncoding(
             in_dim=3, num_frequencies=2, min_freq_exp=0, max_freq_exp=2 - 1, implementation=implementation
         )
-
-        self.mlp_base = MLPWithHashEncoding(
-            num_levels=num_levels,
-            min_res=base_res,
-            max_res=max_res,
-            log2_hashmap_size=log2_hashmap_size,
-            features_per_level=features_per_level,
-            num_layers=num_layers,
-            layer_width=hidden_dim,
-            out_dim=1 + self.geo_feat_dim,
-            activation=nn.ReLU(),
-            out_activation=None,
-            implementation=implementation,
-        )
+        if use_triplanes:
+            logger.info("Using triplanes")
+            self.mlp_base = MLPWithTripleHashEncoding(
+                num_levels=num_levels,
+                min_res=base_res,
+                max_res=max_res,
+                log2_hashmap_size=log2_hashmap_size,
+                features_per_level=features_per_level,
+                num_layers=num_layers,
+                layer_width=hidden_dim,
+                out_dim=1 + self.geo_feat_dim,
+                activation=nn.ReLU(),
+                out_activation=None,
+                # implementation=implementation,
+            )
+        else:
+            self.mlp_base = MLPWithHashEncoding(
+                num_levels=num_levels,
+                min_res=base_res,
+                max_res=max_res,
+                log2_hashmap_size=log2_hashmap_size,
+                features_per_level=features_per_level,
+                num_layers=num_layers,
+                layer_width=hidden_dim,
+                out_dim=1 + self.geo_feat_dim,
+                activation=nn.ReLU(),
+                out_activation=None,
+                implementation=implementation,
+            )
 
         # transients
         if self.use_transient_embedding:

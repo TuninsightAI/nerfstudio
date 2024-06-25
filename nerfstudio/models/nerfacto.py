@@ -18,13 +18,12 @@ NeRF implementation that combines many recent advancements.
 
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Tuple, Type, Optional
-
 import numpy as np
 import torch
+from copy import deepcopy
+from dataclasses import dataclass, field
 from torch.nn import Parameter
+from typing import Dict, List, Literal, Tuple, Type, Optional
 
 from nerfstudio.cameras.camera_optimizers import CameraOptimizer, CameraOptimizerConfig
 from nerfstudio.cameras.cameras import Cameras
@@ -138,6 +137,7 @@ class NerfactoModelConfig(ModelConfig):
     """ rgb loss used for photometric supervision """
     yiq_brightness: float = 0.1
     """ brightness weight for YIQ loss """
+    use_triplanes: bool = False
 
 
 class NerfactoModel(Model):
@@ -178,6 +178,7 @@ class NerfactoModel(Model):
             appearance_embedding_dim=appearance_embedding_dim,
             average_init_density=self.config.average_init_density,
             implementation=self.config.implementation,
+            use_triplanes=self.config.use_triplanes,
         )
 
         self.camera_optimizer: CameraOptimizer = self.config.camera_optimizer.setup(
@@ -196,6 +197,7 @@ class NerfactoModel(Model):
                 **prop_net_args,
                 average_init_density=self.config.average_init_density,
                 implementation=self.config.implementation,
+                use_triplanes=self.config.use_triplanes,
             )
             self.proposal_networks.append(network)
             self.density_fns.extend([network.density_fn for _ in range(num_prop_nets)])
@@ -208,6 +210,7 @@ class NerfactoModel(Model):
                     **prop_net_args,
                     average_init_density=self.config.average_init_density,
                     implementation=self.config.implementation,
+                    use_triplanes=self.config.use_triplanes,
                 )
                 self.proposal_networks.append(network)
             self.density_fns.extend([network.density_fn for network in self.proposal_networks])

@@ -17,14 +17,13 @@ Encoding functions
 """
 
 import itertools
-from abc import abstractmethod
-from typing import Literal, Optional, Sequence
-
 import numpy as np
 import torch
 import torch.nn.functional as F
+from abc import abstractmethod
 from jaxtyping import Float, Int, Shaped
 from torch import Tensor, nn
+from typing import Literal, Optional, Sequence
 
 from nerfstudio.field_components.base_field_component import FieldComponent
 from nerfstudio.utils.external import TCNN_EXISTS, tcnn
@@ -464,6 +463,88 @@ class HashEncoding(Encoding):
         if self.tcnn_encoding is not None:
             return self.tcnn_encoding(in_tensor)
         return self.pytorch_fwd(in_tensor)
+
+
+class TripleHashEncoding(Encoding):
+    """Triple Hash encoding
+
+    Args:
+        num_levels: Number of feature grids.
+        min_res: Resolution of smallest feature grid.
+        max_res: Resolution of largest feature grid.
+        log2_hashmap_size: Size of hash map is 2^log2_hashmap_size.
+        features_per_level: Number of features per level.
+        hash_init_scale: Value to initialize hash grid.
+        implementation: Implementation of hash encoding. Fallback to torch if tcnn not available.
+        interpolation: Interpolation override for tcnn hashgrid. Not supported for torch unless linear.
+    """
+
+    def __init__(
+            self,
+            num_levels: int = 16,
+            min_res: int = 16,
+            max_res: int = 1024,
+            log2_hashmap_size: int = 19,
+            features_per_level: int = 2,
+            hash_init_scale: float = 0.001,
+            implementation: Literal["tcnn",] = "tcnn",
+            interpolation: Optional[Literal["Nearest", "Linear", "Smoothstep"]] = None,
+    ) -> None:
+        super().__init__(in_dim=2)
+
+        self.num_levels = num_levels
+        self.min_res = min_res
+        self.features_per_level = features_per_level
+        self.hash_init_scale = hash_init_scale
+        self.log2_hashmap_size = log2_hashmap_size
+        self.hash_table_size = 2 ** log2_hashmap_size
+
+        levels = torch.arange(num_levels)
+        self.growth_factor = np.exp((np.log(max_res) - np.log(min_res)) / (num_levels - 1)) if num_levels > 1 else 1
+        self.scalings = torch.floor(min_res * self.growth_factor ** levels)
+
+        self.hash_offset = levels * self.hash_table_size
+
+        self.tcnn_encoding = None
+        self.hash_table = torch.empty(0)
+        if implementation == "tcnn" and not TCNN_EXISTS:
+            print_tcnn_speed_warning("TripleHashEncoding")
+            self.build_nn_modules()
+        else:
+            encoding_config = HashEncoding.get_tcnn_encoding_config(
+                num_levels=self.num_levels,
+                features_per_level=self.features_per_level,
+                log2_hashmap_size=self.log2_hashmap_size,
+                min_res=self.min_res,
+                growth_factor=self.growth_factor,
+                interpolation=interpolation,
+            )
+            self.tcnn_encoding_xy = tcnn.Encoding(
+                n_input_dims=2,
+                encoding_config=encoding_config,
+            )
+            self.tcnn_encoding_yz = tcnn.Encoding(
+                n_input_dims=2,
+                encoding_config=encoding_config,
+            )
+            self.tcnn_encoding_zx = tcnn.Encoding(
+                n_input_dims=2,
+                encoding_config=encoding_config,
+            )
+
+    def get_out_dim(self) -> int:
+        return self.num_levels * self.features_per_level
+
+    def forward(self, in_tensor: Float[Tensor, "*bs input_dim"]) -> Float[Tensor, "*bs output_dim"]:
+        in_tensor_xy = in_tensor[..., [0, 1]]
+        in_tensor_yz = in_tensor[..., [1, 2]]
+        in_tensor_zx = in_tensor[..., [2, 0]]
+
+        out_tensor_xy = self.tcnn_encoding_xy(in_tensor_xy)
+        out_tensor_yz = self.tcnn_encoding_yz(in_tensor_yz)
+        out_tensor_zx = self.tcnn_encoding_zx(in_tensor_zx)
+
+        return out_tensor_zx * out_tensor_yz * out_tensor_xy
 
 
 class TensorCPEncoding(Encoding):

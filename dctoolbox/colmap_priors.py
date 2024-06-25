@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import rich
 import torch
-from loguru import logger
 
 from dctoolbox.utils import quat2rotation, rotation2quat
 
@@ -197,13 +196,14 @@ class ColmapPriorConfig:
                 for x in self.image_dir.rglob(f"*.{self.image_extension}")
             ]
             previous_observation_length = len(observations)
-
             observations = [x for x in observations if x.image_name in image_names]
 
             cur_observation_length = len(observations)
 
             if previous_observation_length == cur_observation_length:
                 rich.print(f"Prior images match with images in the folder")
+            elif cur_observation_length == 0:
+                raise RuntimeError(f"Prior images do not match with images in the folder")
             elif previous_observation_length > cur_observation_length:
                 rich.print(
                     f"Prune observations from {previous_observation_length} to {cur_observation_length}, "
@@ -246,7 +246,7 @@ class ColmapPriorConfig:
 
     def main(self):
         observations = self._main()
-        try:
-            self._dump_rig_camera_config(observations)
-        except Exception as e:
-            logger.error(e)
+        # try:
+        self._dump_rig_camera_config(observations)
+        # except Exception as e:
+        #     logger.error(e)
