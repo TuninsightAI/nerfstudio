@@ -1,13 +1,16 @@
-import numpy as np
-import open3d as o3d
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+import open3d as o3d
+
 S = np.array([[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=float)
 
 
-def remove_outlier(pcd: o3d.geometry.PointCloud, nb_points: int, std_ratio: float) -> o3d.geometry.PointCloud:
+def remove_outlier(
+    pcd: o3d.geometry.PointCloud, nb_points: int, std_ratio: float
+) -> o3d.geometry.PointCloud:
     """
     Remove outliers from a point cloud using RANSAC plane detection
     :param pcd: point cloud
@@ -19,7 +22,9 @@ def remove_outlier(pcd: o3d.geometry.PointCloud, nb_points: int, std_ratio: floa
     return pcd
 
 
-def voxel_down_sample(pcd: o3d.geometry.PointCloud, voxel_size: float) -> o3d.geometry.PointCloud:
+def voxel_down_sample(
+    pcd: o3d.geometry.PointCloud, voxel_size: float
+) -> o3d.geometry.PointCloud:
     """
     Downsample a point cloud using voxel grid
     :param pcd: point cloud
@@ -46,7 +51,7 @@ def convert_slam_pcd_to_opencv(point_cloud: o3d.geometry.PointCloud):
 class ProcessPCDConfig:
     input_path: Path
     output_path: Path
-    voxel_size: float
+    voxel_size: float | None = None
     convert_to_opencv: bool = True
 
     def __post_init__(self):
@@ -63,8 +68,8 @@ class ProcessPCDConfig:
         pcd = o3d.io.read_point_cloud(self.input_path.as_posix())
         if self.convert_to_opencv:
             pcd = convert_slam_pcd_to_opencv(pcd)
-
-        pcd = voxel_down_sample(pcd, self.voxel_size)
+        if self.voxel_size is not None:
+            pcd = voxel_down_sample(pcd, self.voxel_size)
         pcd = remove_outlier(pcd, 20, 2.0)
         o3d.io.write_point_cloud(self.output_path.as_posix(), pcd)
 
