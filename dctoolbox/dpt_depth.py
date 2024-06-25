@@ -11,8 +11,8 @@ from torchvision.transforms import Compose
 from tqdm import tqdm
 
 from dctoolbox.dpt.io import read_image
-from dpt.models import DPTDepthModel
-from dpt.transforms import Resize, NormalizeImage, PrepareForNet
+from dctoolbox.dpt.models import DPTDepthModel
+from dctoolbox.dpt.transforms import Resize, NormalizeImage, PrepareForNet
 
 __default_model_path = Path(__file__).parent / "dpt/dpt_hybrid-midas-501f0c75.pt"
 
@@ -117,7 +117,7 @@ def run(input_dir: Path, output_dir: Path, model_path: Path = __default_model_pa
             0,
             255,
         ).astype(np.uint8)
-        colormap = plt.cm.get_cmap("plasma")
+        colormap = plt.colormaps.get_cmap("plasma")
         colored_pred = colormap(normalize_pred)[:, :, :3]
 
         imageio.imwrite(
