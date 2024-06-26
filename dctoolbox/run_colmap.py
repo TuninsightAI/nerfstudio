@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 import typing
+import typing as t
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,7 +94,7 @@ def injection_to_empty_database(
     output_dir: Path,
     database_path: Path,
     image_dir: Path | None = None,
-    image_extension: str = "png",
+    image_extension: t.Literal["png", "jpg", "jpeg"] = "png",
     verbose: bool = False,
 ):
     assert_dataset_path(database_path)
@@ -116,7 +117,7 @@ def feature_extraction(
     image_folder: str | Path,
     camera_mask_folder: Path | str = None,
     verbose: bool = True,
-        img_extension: str = "png"
+    img_extension: str = "png",
 ):
     database_path = Path(database_path)
     assert_dataset_path(database_path=database_path)
@@ -133,8 +134,13 @@ def feature_extraction(
             )
         )
         image_names = sorted(
-            set([x.name for x in image_folder.rglob(f"*.{img_extension}") if
-                 x.is_file()])
+            set(
+                [
+                    x.name
+                    for x in image_folder.rglob(f"*.{img_extension}")
+                    if x.is_file()
+                ]
+            )
         )
         assert set(image_names).issubset(set(mask_names)), (
             f"Mask and image names are not consistent. "
@@ -350,7 +356,7 @@ class ColmapRunner:
 
     prior_injection: bool = False
     meta_file: Path | None = None
-    image_extension: str = "png"
+    image_extension: t.Literal["png", "jpg", "jpeg"] = "png"
 
     rig_bundle_adjustment: bool = False
 
@@ -366,6 +372,8 @@ class ColmapRunner:
             assert self.meta_file is not None
 
     def main(self):
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
         data_dir = self.data_dir
         image_dir = data_dir / self.image_folder_name
         assert image_dir.exists(), f"{image_dir} does not exist."
@@ -402,7 +410,13 @@ class ColmapRunner:
             except sqlite3.IntegrityError:
                 logger.info("Prior already injected. Skipping...")
 
-        feature_extraction(database_path, image_dir, mask_dir, verbose=False, img_extension=self.image_extension)
+        feature_extraction(
+            database_path,
+            image_dir,
+            mask_dir,
+            verbose=False,
+            img_extension=self.image_extension,
+        )
 
         feature_matching(self.matching_type, database_path, verbose=False)
 
@@ -452,6 +466,7 @@ class ColmapRunnerFromScratch(ColmapRunner):
 class ColmapRunnerWithPointTriangulation(ColmapRunner):
     refinement_time: int = 1
     prior_injection: tyro.conf.Suppress[bool] = True
+    meta_file: Path
 
     def __post_init__(self):
         assert self.prior_injection is True

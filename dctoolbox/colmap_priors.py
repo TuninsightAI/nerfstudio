@@ -51,7 +51,7 @@ class ColmapPriorConfig:
     """path to the reference folder"""
     image_dir: Path | None = None
     """image-dir, to check if the image name and the prior name corresponds"""
-    image_extension: str = "png"
+    image_extension: t.Literal["png", "jpg", "jpeg"] = "png"
 
     def __post_init__(self):
 
@@ -71,17 +71,22 @@ class ColmapPriorConfig:
         if min(observed_camera_nums) == 0:
             observed_camera_nums = [x.cam_no + 1 for x in observations]
 
-        nested_camera_num_prefix = list(zip(observed_camera_nums, observed_camera_prefix))
+        nested_camera_num_prefix = list(
+            zip(observed_camera_nums, observed_camera_prefix)
+        )
         nested_camera_num_prefix = set(nested_camera_num_prefix)
         assert camera_nums == set(observed_camera_nums)
         rig_data = [
-            {"ref_camera_id": 1,
-             "cameras": [
-                 {
-                     "camera_id": camera_num,
-                     "image_prefix": prefix,
-                 } for camera_num, prefix in nested_camera_num_prefix
-             ]}
+            {
+                "ref_camera_id": 1,
+                "cameras": [
+                    {
+                        "camera_id": camera_num,
+                        "image_prefix": prefix,
+                    }
+                    for camera_num, prefix in nested_camera_num_prefix
+                ],
+            }
         ]
         with open(self.output_folder / "rig_cameras.json", "w") as f:
             json.dump(rig_data, f, indent=4)
@@ -203,7 +208,9 @@ class ColmapPriorConfig:
             if previous_observation_length == cur_observation_length:
                 rich.print(f"Prior images match with images in the folder")
             elif cur_observation_length == 0:
-                raise RuntimeError(f"Prior images do not match with images in the folder")
+                raise RuntimeError(
+                    f"Prior images do not match with images in the folder"
+                )
             elif previous_observation_length > cur_observation_length:
                 rich.print(
                     f"Prune observations from {previous_observation_length} to {cur_observation_length}, "
