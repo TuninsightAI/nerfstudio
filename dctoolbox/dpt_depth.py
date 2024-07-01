@@ -1,12 +1,13 @@
 """Compute depth maps for images in the input folder.
 """
+import os
+from itertools import chain
+from pathlib import Path
+
 import imageio
 import numpy as np
-import os
 import torch
-from itertools import chain
 from matplotlib import pyplot as plt
-from pathlib import Path
 from torchvision.transforms import Compose
 from tqdm import tqdm
 
@@ -14,7 +15,9 @@ from dctoolbox.dpt.io import read_image
 from dctoolbox.dpt.models import DPTDepthModel
 from dctoolbox.dpt.transforms import Resize, NormalizeImage, PrepareForNet
 
-__default_model_path = Path(__file__).parent / "dpt/dpt_hybrid-midas-501f0c75.pt"
+__default_model_path = (
+    Path(__file__).parent / "checkpoints" / "dpt_hybrid-midas-501f0c75.pt"
+)
 
 
 @torch.no_grad()
