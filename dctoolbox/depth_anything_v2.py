@@ -17,16 +17,21 @@ def run(
     output_dir: Path,
     model_type: t.Literal["vits", "vitb", "vitl", "vitg"] = "vitl",
     image_extension: t.Literal["png", "jpg", "jpeg"] = "png",
+    input_size: int = 518,
 ):
-    """Run Depth Anything V2 to compute depth maps.
-
-    Args:
-        input_dir (str): path to input folder
-        output_dir (str): path to output folder
-        model_path (str): path to saved model
     """
+    Run the depth estimation pipeline on a given input directory and save the results to an output directory.
+    Args:
+        input_dir (Path): The directory containing the input images.
+        output_dir (Path): The directory to save the output depth maps.
+        model_type (str, optional): The type of depth estimation model to use. Defaults to "vitl".
+        image_extension (str, optional): The extension of the input images. Defaults to "png".
+    Returns:
+        None
+    Raises:
+        AssertionError: If the input directory does not exist or is not a directory.
     assert input_dir.exists() and input_dir.is_dir(), input_dir
-    assert output_dir.exists() and output_dir.is_dir(), output_dir
+    """
 
     # select device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -51,7 +56,7 @@ def run(
     }
     model_path = __default_model_path(model_type)
 
-    depth_anything = DepthAnythingV2(**model_configs[args.encoder])
+    depth_anything = DepthAnythingV2(**model_configs[model_type])
     depth_anything.load_state_dict(torch.load(model_path, map_location="cpu"))
     depth_anything = depth_anything.to(device).eval()
 
@@ -61,7 +66,7 @@ def run(
     for k, cur_image_path in enumerate(image_paths):
         raw_image = cv2.imread(cur_image_path.as_posix())
 
-        disparity = depth_anything.infer_image(raw_image, args.input_size)
+        disparity = depth_anything.infer_image(raw_image, input_size)
 
         disparity = (disparity - disparity.min()) / (disparity.max() - disparity.min())
 
@@ -77,3 +82,9 @@ def run(
 
         filename.parent.mkdir(parents=True, exist_ok=True)
         np.savez(filename, pred=depth)
+
+
+if __name__ == "__main__":
+    import tyro
+
+    tyro.cli(run)
