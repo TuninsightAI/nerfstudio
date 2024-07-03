@@ -12,7 +12,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from nerfstudio.data.utils.colmap_parsing_utils import qvec2rotmat, rotmat2qvec
-
+from interpolate_poses import LiDARDataInterpolator
 
 @dataclass(slots=True, unsafe_hash=True)
 class Extrinsic:
@@ -169,7 +169,7 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
 
 
 def create_camera_pose(
-        camerainfo: CameraInfo, lidar_frame: pd.DataFrame
+        camerainfo: CameraInfo, lidar_frame: pd.DataFrame, lidar_interpolator: LiDARDataInterpolator = None
 ) -> t.List[Extrinsic]:
     """
     return a list of c2w extrinsics for each image in the lidar frame
@@ -187,7 +187,17 @@ def create_camera_pose(
     pose_c2ws = []
     new_extrinsic = []
     for row_id, cur_image in image_extrinsic.iterrows():
-        c2w = np.array(cur_image["extrinsics"])
+        
+        # find the new interpolated pose
+        if lidar_interpolator is not None:
+            lidar_timestamp = cur_image["timestamp"]
+            lidar_pose = lidar_interpolator.get_interpolated_position(lidar_timestamp)
+            lidar_quat = lidar_interpolator.get_interpolated_quaternion(lidar_timestamp)
+            lidar_rot = qvec2rotmat(lidar_quat)
+            c2w = np.concatenate([lidar_rot, lidar_pose.reshape(-1, 1)], axis=1)
+        else:
+            c2w = np.array(cur_image["extrinsics"])
+
         c2w = np.concatenate([c2w, np.array([[0, 0, 0, 1]])], axis=0)
 
         pose_c2w = np.dot(c2w, camera_c2o)
@@ -210,6 +220,8 @@ class InterfaceAdaptorConfig:
     slam_json_path: Path
 
     output_path: Path
+
+    interpolate_poses: bool = False
 
     def __post_init__(self):
         assert self.slam_json_path.exists(), "slam_json_path must be provided"
@@ -234,15 +246,20 @@ class InterfaceAdaptorConfig:
                     self.slam_json_path.parent / slam_json["scanMeta"]
             )
         lidar_info = read_lidar_info(lidar_json_path)
+        lidar_interpolator = LiDARDataInterpolator(lidar_json_path)
 
         camera_infos: t.List[CameraInfo] = [
             read_camera_info(x) for x in camera_json_paths
         ]
-
         image_extrinics: t.List[Extrinsic] = []
 
         for cur_camera_info in camera_infos:
-            ext_given_cam = create_camera_pose(cur_camera_info, lidar_info)
+            if self.interpolate_poses:
+                ext_given_cam = create_camera_pose(
+                    cur_camera_info, lidar_info, lidar_interpolator
+                )
+            else:
+                ext_given_cam = create_camera_pose(cur_camera_info, lidar_info)
             image_extrinics.extend(ext_given_cam)
 
         self._to_json(camera_infos, image_extrinics)
@@ -335,5 +352,12 @@ def entrance_point():
     tyro.cli(InterfaceAdaptorConfig).main()
 
 
+
 if __name__ == "__main__":
-    entrance_point()
+    # entrance_point()
+
+    output_dir = Path("/Users/vaibhavholani/development/computer_vision/dConstruct/data/pixel_lvl1_water2_resampled/")
+    InterfaceAdaptorConfig(
+            slam_json_path=output_dir / "raw" / "slamMeta.json",
+            output_path=output_dir / "undistorted" / "meta.json",
+        ).main()
