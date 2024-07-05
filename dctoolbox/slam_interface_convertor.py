@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import json
+import typing as t
+from dataclasses import dataclass
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import typing as t
+import rich
 import tyro
-from dataclasses import dataclass
-from itertools import chain
-from pathlib import Path
 from tqdm import tqdm
 
+from dctoolbox.pose_evals.interpolate_poses import LiDARDataInterpolator
 from nerfstudio.data.utils.colmap_parsing_utils import qvec2rotmat, rotmat2qvec
-from interpolate_poses import LiDARDataInterpolator
+
 
 @dataclass(slots=True, unsafe_hash=True)
 class Extrinsic:
@@ -145,7 +147,7 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
     dataframe = pd.DataFrame(lidar_json["data"])
     dataframe = dataframe[
         (dataframe["isKeyframe"] == True) & (dataframe["hasImg"] == True)
-        ]
+    ]
 
     def create_rot(row):
         qvec = np.array([row["qw"], row["qx"], row["qy"], row["qz"]])
@@ -169,7 +171,9 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
 
 
 def create_camera_pose(
-        camerainfo: CameraInfo, lidar_frame: pd.DataFrame, lidar_interpolator: LiDARDataInterpolator = None
+    camerainfo: CameraInfo,
+    lidar_frame: pd.DataFrame,
+    lidar_interpolator: LiDARDataInterpolator | None = None,
 ) -> t.List[Extrinsic]:
     """
     return a list of c2w extrinsics for each image in the lidar frame
@@ -187,7 +191,7 @@ def create_camera_pose(
     pose_c2ws = []
     new_extrinsic = []
     for row_id, cur_image in image_extrinsic.iterrows():
-        
+
         # find the new interpolated pose
         if lidar_interpolator is not None:
             lidar_timestamp = cur_image["timestamp"]
@@ -239,14 +243,14 @@ class InterfaceAdaptorConfig:
 
         try:
             lidar_json_path: Path = (
-                    self.slam_json_path.parent / slam_json["mainSensorSerial"] / "scanMeta.json"
+                self.slam_json_path.parent
+                / slam_json["mainSensorSerial"]
+                / "scanMeta.json"
             )
         except KeyError:
-            lidar_json_path: Path = (
-                    self.slam_json_path.parent / slam_json["scanMeta"]
-            )
+            lidar_json_path: Path = self.slam_json_path.parent / slam_json["scanMeta"]
+
         lidar_info = read_lidar_info(lidar_json_path)
-        lidar_interpolator = LiDARDataInterpolator(lidar_json_path)
 
         camera_infos: t.List[CameraInfo] = [
             read_camera_info(x) for x in camera_json_paths
@@ -255,6 +259,7 @@ class InterfaceAdaptorConfig:
 
         for cur_camera_info in camera_infos:
             if self.interpolate_poses:
+                lidar_interpolator = LiDARDataInterpolator(lidar_json_path)
                 ext_given_cam = create_camera_pose(
                     cur_camera_info, lidar_info, lidar_interpolator
                 )
@@ -265,7 +270,7 @@ class InterfaceAdaptorConfig:
         self._to_json(camera_infos, image_extrinics)
 
     def _to_json(
-            self, camera_infos: t.List[CameraInfo], image_extrinsics: t.List[Extrinsic]
+        self, camera_infos: t.List[CameraInfo], image_extrinsics: t.List[Extrinsic]
     ):
 
         calibrationInfo = dict()
@@ -307,10 +312,10 @@ class InterfaceAdaptorConfig:
                 batch = []
                 for cur_image_extrinsic in remaining_image_extrinsics:
                     if (
-                            Path(cur_image_extrinsic.name).relative_to(
-                                cur_image_extrinsic.camera_name
-                            )
-                            == cur_timestamp
+                        Path(cur_image_extrinsic.name).relative_to(
+                            cur_image_extrinsic.camera_name
+                        )
+                        == cur_timestamp
                     ):
                         batch.append(cur_image_extrinsic)
                     if len(batch) == 4:
@@ -349,15 +354,18 @@ class InterfaceAdaptorConfig:
 
 
 def entrance_point():
-    tyro.cli(InterfaceAdaptorConfig).main()
-
+    config = tyro.cli(tyro.conf.FlagConversionOff[InterfaceAdaptorConfig])
+    rich.print(config)
+    config.main()
 
 
 if __name__ == "__main__":
-    # entrance_point()
+    entrance_point()
 
-    output_dir = Path("/Users/vaibhavholani/development/computer_vision/dConstruct/data/pixel_lvl1_water2_resampled/")
-    InterfaceAdaptorConfig(
-            slam_json_path=output_dir / "raw" / "slamMeta.json",
-            output_path=output_dir / "undistorted" / "meta.json",
-        ).main()
+    # output_dir = Path(
+    #     "/Users/vaibhavholani/development/computer_vision/dConstruct/data/pixel_lvl1_water2_resampled/"
+    # )
+    # InterfaceAdaptorConfig(
+    #     slam_json_path=output_dir / "raw" / "slamMeta.json",
+    #     output_path=output_dir / "undistorted" / "meta.json",
+    # ).main()
