@@ -28,7 +28,7 @@ def predict_given_image_path(model, img_path: Path, margin=0.2) -> np.ndarray:
     person_boxes = [
         boxes.xywh[i]
         for i in range(len(pred_classes))
-        if pred_classes[i] <= 8 and probs[i] > 0.75
+        if pred_classes[i] == 0 and probs[i] > 0.75
     ]
 
     mask = np.zeros((result.orig_img.shape[0], result.orig_img.shape[1]))
@@ -56,16 +56,22 @@ class YoloMaskGeneratorConfig:
 
     extension: t.Literal[".png", ".jpg", ".jpeg"] = ".jpeg"
 
-    checkpoint_path: Path = Path("/home/jizong/Workspace/dConstruct/taichi-splatting/checkpoint/yolov8x.pt")
+    checkpoint_path: Path = Path(
+        "/home/jizong/Workspace/dConstruct/taichi-splatting/checkpoint/yolov8x.pt"
+    )
 
     def main(self):
-        assert self.image_dir.exists(), f"Image directory {self.image_dir} does not exist"
+        assert (
+            self.image_dir.exists()
+        ), f"Image directory {self.image_dir} does not exist"
         Path(self.mask_dir).mkdir(parents=True, exist_ok=True)
 
         # Load a model
         model = YOLO("yolov8x.pt")  # load a pretrained model (recommended for training)
 
-        for f in tqdm(sorted(self.image_dir.rglob(f"*{self.extension}")), desc="Generating masks"):
+        for f in tqdm(
+            sorted(self.image_dir.rglob(f"*{self.extension}")), desc="Generating masks"
+        ):
             mask = predict_given_image_path(model, f)
             relative_path = f.relative_to(self.image_dir)
             save_path = Path(self.mask_dir, str(relative_path) + ".png")
