@@ -1,10 +1,14 @@
+from multiprocessing import JoinableQueue, Process
+
 import cv2
 import matplotlib
 import numpy as np
 import torch
 import typing as t
 from PIL import Image
+from jaxtyping import Float
 from pathlib import Path
+from torch import Tensor
 from tqdm import tqdm
 
 from dctoolbox.depth_anything_v2.dpt import DepthAnythingV2
@@ -31,6 +35,57 @@ model_configs = {
         "out_channels": [1536, 1536, 1536, 1536],
     },
 }
+cmap = matplotlib.colormaps.get_cmap("Spectral_r")
+
+
+class SaveWorker:
+    def __init__(self, input_dir: Path, output_dir: Path, n_workers: int = 5):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        self._num_workers = n_workers
+        self._input_queue = JoinableQueue()
+
+        self._processes = [
+            Process(target=self._daemon_worker) for _ in range(self._num_workers)
+        ]
+        for p in self._processes:
+            p.start()
+
+    def _daemon_worker(self):
+        while True:
+            data = self._input_queue.get()
+            if data is None:
+                break
+            disparity, cur_image_path = data
+            self._save_func(disparity, cur_image_path)
+            self._input_queue.task_done()
+
+    def _save_func(self, disparity, cur_image_path):
+        disparity = (disparity - disparity.min()) / (disparity.max() - disparity.min())
+
+        disparity = disparity.astype(np.float32)
+        filename = (
+            self.output_dir / cur_image_path.relative_to(self.input_dir)
+        ).with_suffix(".npz")
+
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(filename, pred=disparity)
+        rgb_disparity = (cmap(disparity)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
+
+        Image.fromarray(rgb_disparity).save(
+            (self.output_dir / cur_image_path.relative_to(self.input_dir)).with_suffix(
+                ".png"
+            )
+        )
+
+    def save(self, disparity: Float[Tensor, "1 h w"], cur_image_path: Path):
+        self._input_queue.put((disparity, cur_image_path))
+
+    def end(self):
+        for _ in range(self._num_workers):
+            self._input_queue.put(None)
+        for p in self._processes:
+            p.join()
 
 
 @torch.no_grad()
@@ -65,9 +120,10 @@ def run(
     depth_anything.load_state_dict(torch.load(model_path, map_location="cpu"))
     depth_anything = depth_anything.to(device).eval()
 
+    saver = SaveWorker(input_dir, output_dir)
+
     # get input
     image_paths = sorted(Path(input_dir).rglob(f"*.{image_extension}"))
-    cmap = matplotlib.colormaps.get_cmap("Spectral_r")
 
     for k, cur_image_path in tqdm(
         enumerate(image_paths), desc="Processing images", total=len(image_paths)
@@ -75,21 +131,9 @@ def run(
         raw_image = cv2.imread(cur_image_path.as_posix())
 
         disparity = depth_anything.infer_image(raw_image, input_size)
+        saver.save(disparity, cur_image_path)
 
-        disparity = (disparity - disparity.min()) / (disparity.max() - disparity.min())
-
-        disparity = disparity.astype(np.float32)
-        filename = (output_dir / cur_image_path.relative_to(input_dir)).with_suffix(
-            ".npz"
-        )
-
-        filename.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(filename, pred=disparity)
-        rgb_disparity = (cmap(disparity)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
-
-        Image.fromarray(rgb_disparity).save(
-            (output_dir / cur_image_path.relative_to(input_dir)).with_suffix(".png")
-        )
+    saver.end()
 
 
 if __name__ == "__main__":
