@@ -10,48 +10,35 @@ from torch.nn import functional as F
 
 def quat2rotation(qvec: torch.FloatTensor) -> torch.FloatTensor:
     # Extract the quaternion components
-    w, x, y, z = qvec[0], qvec[1], qvec[2], qvec[3]
-    
+    w, x, y, z = qvec.unbind()
     # Create the rotation matrix
-    rotmat = torch.tensor([
-        [
-            1 - 2 * y**2 - 2 * z**2,
-            2 * x * y - 2 * w * z,
-            2 * x * z + 2 * w * y
-        ],
-        [
-            2 * x * y + 2 * w * z,
-            1 - 2 * x**2 - 2 * z**2,
-            2 * y * z - 2 * w * x
-        ],
-        [
-            2 * x * z - 2 * w * y,
-            2 * y * z + 2 * w * x,
-            1 - 2 * x**2 - 2 * y**2
-        ]
-    ], dtype=torch.float64)
+    rotmat = torch.stack([
+        torch.stack([1 - 2 * y**2 - 2 * z**2, 2 * x * y - 2 * w * z, 2 * x * z + 2 * w * y]),
+        torch.stack([2 * x * y + 2 * w * z, 1 - 2 * x**2 - 2 * z**2, 2 * y * z - 2 * w * x]),
+        torch.stack([2 * x * z - 2 * w * y, 2 * y * z + 2 * w * x, 1 - 2 * x**2 - 2 * y**2])
+    ], dim=0)
     
     return rotmat
 
-    
-    
-
 def rotation2quat(R: torch.Tensor) -> torch.Tensor:
+    # Flatten the rotation matrix and extract elements
     Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flatten()
 
-    K = torch.tensor([
-        [Rxx - Ryy - Rzz, 0, 0, 0],
-        [Ryx + Rxy, Ryy - Rxx - Rzz, 0, 0],
-        [Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, 0],
-        [Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz]
+    # Create the K matrix using operations that retain gradients
+    K = torch.stack([
+        torch.stack([Rxx - Ryy - Rzz, Ryx + Rxy, Rzx + Rxz, Ryz - Rzy]),
+        torch.stack([Ryx + Rxy, Ryy - Rxx - Rzz, Rzy + Ryz, Rzx - Rxz]),
+        torch.stack([Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, Rxy - Ryx]),
+        torch.stack([Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz])
     ]) / 3.0
 
+    # Use torch.linalg.eigh to get eigenvalues and eigenvectors
     eigvals, eigvecs = torch.linalg.eigh(K)
     qvec = eigvecs[:, torch.argmax(eigvals)]
     qvec = qvec[[3, 0, 1, 2]]
     
-    if qvec[0] < 0:
-        qvec *= -1
+    # Ensure the scalar part of the quaternion is positive
+    qvec = torch.where(qvec[0] < 0, -qvec, qvec)
 
     return qvec
 
@@ -189,7 +176,10 @@ def dummy_loss():
             c2w_reconstructed = torch.matmul(lidar_extrinsic, cam_extrinsic)
             c2w_reconstructed_qvec = rotation2quat(c2w_reconstructed[:3, :3])
             c2w_reconstructed_tvec = c2w_reconstructed[:3, 3]
+            
             loss = torch.sum(torch.abs(c2w_reconstructed_qvec - img.qvec_new)) + torch.sum(torch.abs(c2w_reconstructed_tvec - img.tvec_new))
+            
+            # loss = torch.sum(torch.abs(lidar_qtvec[lidar_pose]["qvec"] - img.qvec_new)) + torch.sum(torch.abs(lidar_qtvec[lidar_pose]["tvec"] - img.tvec_new))
             total_loss = total_loss +  loss
             
     return total_loss
