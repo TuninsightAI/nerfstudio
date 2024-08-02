@@ -153,7 +153,7 @@ def feature_extraction(
         f"--database_path {database_path.as_posix()}",
         f"--image_path {image_folder}",
         f"--ImageReader.camera_model  PINHOLE",
-        f"--SiftExtraction.use_gpu 0",
+        f"--SiftExtraction.use_gpu 1",
         # f"--SiftExtraction.domain_size_pooling 1 ",
         # f"--ImageReader.single_camera_per_folder 1",
         # "--SiftExtraction.estimate_affine_shape 1"
@@ -183,7 +183,7 @@ def feature_matching(
     feature_matcher_cmd = [
         f"{colmap_command} {matching_method}_matcher",
         f"--database_path {database_path}",
-        f"--SiftMatching.use_gpu 0",
+        f"--SiftMatching.use_gpu 1",
         # "--SiftMatching.min_num_inliers 50",
         # f"--SiftMatching.guided_matching 1",
     ]
