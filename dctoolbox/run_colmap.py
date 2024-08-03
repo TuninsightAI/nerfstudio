@@ -27,6 +27,7 @@ from nerfstudio.utils.scripts import run_command
 CONSOLE = Console(width=120)
 
 colmap_command = "colmap"
+glomap_command = "glomap"
 magick_command = "magick"
 
 
@@ -237,6 +238,31 @@ def mapper(
         run_command(mapper_cmd, verbose=verbose)
     CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
 
+def glomap_mapper(
+    *, database_path: Path, image_dir: Path, verbose: bool = False, sparse_dir: Path
+):
+    # Bundle adjustment
+    shutil.copy(database_path, database_path.parent / "database.db_before_mapper")
+
+    sparse_dir.mkdir(parents=True, exist_ok=True)
+    mapper_cmd = [
+        f"{glomap_command} mapper",
+        f"--database_path {database_path}",
+        f"--image_path {image_dir}",
+        f"--output_path {sparse_dir}",
+    ]
+
+    mapper_cmd = " ".join(mapper_cmd)
+
+    rich.print(mapper_cmd)
+
+    with status(
+        msg="[bold yellow]Running GLOMAP bundle adjustment... (This may take a while)",
+        spinner="circle",
+        verbose=verbose,
+    ):
+        run_command(mapper_cmd, verbose=verbose)
+    CONSOLE.log("[bold green]:tada: Done GLOMAP bundle adjustment.")
 
 def point_triangulation(
     *,
@@ -508,6 +534,48 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
                     max_num_iterations=max_num_iterations,
                 )
             model_alignment(database_path, exp_dir / "prior_sparse", verbose=False)
+
+@dataclass
+class ColmapRunnerWithGlomap(ColmapRunner):
+    refinement_time: int = 1
+    prior_injection: tyro.conf.Suppress[bool] = True
+    meta_file: Path
+
+    def __post_init__(self):
+        assert self.prior_injection is True
+        assert self.meta_file is not None
+
+    def main(self):
+        data_dir = self.data_dir
+        image_dir = data_dir / self.image_folder_name
+        exp_dir = data_dir / self.experiment_name
+        database_path = data_dir / self.experiment_name / "database.db"
+        super().main()
+        max_num_iterations = 100 // self.refinement_time
+        for i in range(self.refinement_time):
+            glomap_mapper(
+                database_path=database_path,
+                image_dir=image_dir,
+                verbose=False,
+                sparse_dir=exp_dir / "prior_sparse",
+            )
+
+            if self.rig_bundle_adjustment:
+                rig_bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse/0",
+                    output_path=exp_dir / "prior_sparse/0",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                    rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
+                )
+            else:
+                bundle_adjustment(
+                    input_path=exp_dir / "prior_sparse/0",
+                    output_path=exp_dir / "prior_sparse/0",
+                    verbose=True,
+                    max_num_iterations=max_num_iterations,
+                )
+            model_alignment(database_path, exp_dir / "prior_sparse/0", verbose=False)
 
 
 if __name__ == "__main__":
