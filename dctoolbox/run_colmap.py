@@ -215,7 +215,6 @@ def mapper(
     *, database_path: Path, image_dir: Path, verbose: bool = False, sparse_dir: Path
 ):
     # Bundle adjustment
-    shutil.copy(database_path, database_path.parent / "database.db_before_mapper")
 
     sparse_dir.mkdir(parents=True, exist_ok=True)
     mapper_cmd = [
@@ -238,11 +237,11 @@ def mapper(
         run_command(mapper_cmd, verbose=verbose)
     CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
 
+
 def glomap_mapper(
     *, database_path: Path, image_dir: Path, verbose: bool = False, sparse_dir: Path
 ):
     # Bundle adjustment
-    shutil.copy(database_path, database_path.parent / "database.db_before_mapper")
 
     sparse_dir.mkdir(parents=True, exist_ok=True)
     mapper_cmd = [
@@ -263,6 +262,7 @@ def glomap_mapper(
     ):
         run_command(mapper_cmd, verbose=verbose)
     CONSOLE.log("[bold green]:tada: Done GLOMAP bundle adjustment.")
+
 
 def point_triangulation(
     *,
@@ -371,7 +371,7 @@ def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False
 
 
 @dataclass
-class ColmapRunner:
+class _ColmapRunner:
     data_dir: Path
     image_folder_name: str = "images"
     mask_folder_name: str | None = None
@@ -448,8 +448,10 @@ class ColmapRunner:
 
 
 @dataclass
-class ColmapRunnerFromScratch(ColmapRunner):
+class ColmapRunnerFromScratch(_ColmapRunner):
     model_alignment: bool = False
+    use_glomap: bool = False
+    """Use glomap as the mapper, instead of colmap"""
 
     def __post_init__(self):
         if self.model_alignment:
@@ -464,13 +466,20 @@ class ColmapRunnerFromScratch(ColmapRunner):
         database_path = data_dir / self.experiment_name / "database.db"
 
         super().main()
-
-        mapper(
-            database_path=database_path,
-            image_dir=image_dir,
-            verbose=True,
-            sparse_dir=exp_dir / "sparse",
-        )
+        if not self.use_glomap:
+            mapper(
+                database_path=database_path,
+                image_dir=image_dir,
+                verbose=True,
+                sparse_dir=exp_dir / "sparse",
+            )
+        else:
+            glomap_mapper(
+                database_path=database_path,
+                image_dir=image_dir,
+                verbose=True,
+                sparse_dir=exp_dir / "sparse",
+            )
         if self.rig_bundle_adjustment:
             rig_bundle_adjustment(
                 input_path=exp_dir / "sparse" / "0",
@@ -489,7 +498,7 @@ class ColmapRunnerFromScratch(ColmapRunner):
 
 
 @dataclass
-class ColmapRunnerWithPointTriangulation(ColmapRunner):
+class ColmapRunnerWithPointTriangulation(_ColmapRunner):
     refinement_time: int = 1
     prior_injection: tyro.conf.Suppress[bool] = True
     meta_file: Path
@@ -534,48 +543,6 @@ class ColmapRunnerWithPointTriangulation(ColmapRunner):
                     max_num_iterations=max_num_iterations,
                 )
             model_alignment(database_path, exp_dir / "prior_sparse", verbose=False)
-
-@dataclass
-class ColmapRunnerWithGlomap(ColmapRunner):
-    refinement_time: int = 1
-    prior_injection: tyro.conf.Suppress[bool] = True
-    meta_file: Path
-
-    def __post_init__(self):
-        assert self.prior_injection is True
-        assert self.meta_file is not None
-
-    def main(self):
-        data_dir = self.data_dir
-        image_dir = data_dir / self.image_folder_name
-        exp_dir = data_dir / self.experiment_name
-        database_path = data_dir / self.experiment_name / "database.db"
-        super().main()
-        max_num_iterations = 100 // self.refinement_time
-        for i in range(self.refinement_time):
-            glomap_mapper(
-                database_path=database_path,
-                image_dir=image_dir,
-                verbose=False,
-                sparse_dir=exp_dir / "prior_sparse",
-            )
-
-            if self.rig_bundle_adjustment:
-                rig_bundle_adjustment(
-                    input_path=exp_dir / "prior_sparse/0",
-                    output_path=exp_dir / "prior_sparse/0",
-                    verbose=True,
-                    max_num_iterations=max_num_iterations,
-                    rig_camera_json=exp_dir / "priors" / "rig_cameras.json",
-                )
-            else:
-                bundle_adjustment(
-                    input_path=exp_dir / "prior_sparse/0",
-                    output_path=exp_dir / "prior_sparse/0",
-                    verbose=True,
-                    max_num_iterations=max_num_iterations,
-                )
-            model_alignment(database_path, exp_dir / "prior_sparse/0", verbose=False)
 
 
 if __name__ == "__main__":
