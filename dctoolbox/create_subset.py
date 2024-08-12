@@ -3,6 +3,7 @@ Use the output of visibility to check to create a new subset dataset
 """
 import json
 import shutil
+import typing
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -20,6 +21,7 @@ class SubregionConfig:
     image_dir: Path
     visibility_json: Path
     output_dir: Path
+    extension: typing.Literal["jpeg", "png", "jpg", "jpeg.png"]
 
     def main(self):
         with open(self.visibility_json, "r") as f:
@@ -35,11 +37,9 @@ class SubregionConfig:
         )
 
         for cur_image in tqdm(visibility):
-            image_path = self.image_dir / (cur_image + ".jpeg")
+            image_path = self.image_dir / (cur_image + f".{self.extension}")
 
-            save_image_path = (
-                self.output_dir / "images" / image_path.relative_to(self.image_dir)
-            )
+            save_image_path = self.output_dir / image_path.relative_to(self.image_dir)
             # save_mask_path = save_mask_path.parent / (save_image_path.stem + ".jpeg.png")
 
             save_image(image_path, save_image_path)
