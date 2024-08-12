@@ -301,6 +301,7 @@ def bundle_adjustment(
     verbose: bool = True,
     max_num_iterations: int = 100,
 ):
+    output_path.mkdir(parents=True, exist_ok=True)
     # shutil.copy(database_path, database_path.parent / "database.db_before_point_triangulation")
     bundle_adjuster_cmd = [
         f"{colmap_command} bundle_adjuster",
@@ -328,6 +329,7 @@ def rig_bundle_adjustment(
     max_num_iterations: int = 100,
     rig_camera_json: str | Path,
 ):
+    output_path.mkdir(parents=True, exist_ok=True)
 
     bundle_adjuster_cmd = [
         f"{colmap_command} rig_bundle_adjuster",
@@ -351,7 +353,7 @@ def rig_bundle_adjustment(
 def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False):
     assert_dataset_path(database_path)
     model_alignment_cmd = [
-        "colmap model_aligner",
+        f"{colmap_command} model_aligner",
         f"--input_path {str(sparse_dir)}",
         f"--output_path {str(sparse_dir)}",
         f"--database_path {str(database_path)}",
