@@ -148,7 +148,8 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
     dataframe = dataframe[
         (dataframe["isKeyframe"] == True) & (dataframe["hasImg"] == True)
     ]
-
+    dataframe = dataframe[(dataframe["nearestImgs"].apply(len) == 4)]
+    
     def create_rot(row):
         qvec = np.array([row["qw"], row["qx"], row["qy"], row["qz"]])
         qvec /= np.linalg.norm(qvec)
@@ -340,7 +341,10 @@ class InterfaceAdaptorConfig:
                 )
                 for x in timestamp_batch
             }
-            data.append(cur_data)
+            
+            # only add the data if all 4 cameras caputred an image at that timestamp
+            if len(cur_data["imgName"]) == 4:
+                data.append(cur_data)
 
         with open(self.output_path, "w") as f:
             json.dump(
