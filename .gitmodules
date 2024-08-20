@@ -1,3 +1,6 @@
 [submodule "third_party/kplanes_nerfstudio"]
 	path = third_party/kplanes_nerfstudio
 	url = https://github.com/Giodiro/kplanes_nerfstudio.git
+[submodule "third_party/QuadTreeAttention"]
+	path = third_party/QuadTreeAttention
+	url = https://github.com/Tangshitao/QuadTreeAttention.git
