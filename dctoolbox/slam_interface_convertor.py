@@ -148,7 +148,6 @@ def read_lidar_info(lidar_json_path: Path) -> pd.DataFrame:
     dataframe = dataframe[
         (dataframe["isKeyframe"] == True) & (dataframe["hasImg"] == True)
     ]
-    dataframe = dataframe[(dataframe["nearestImgs"].apply(len) == 4)]
     
     def create_rot(row):
         qvec = np.array([row["qw"], row["qx"], row["qy"], row["qz"]])
@@ -225,7 +224,8 @@ class InterfaceAdaptorConfig:
     slam_json_path: Path
 
     output_path: Path
-
+    
+    num_cameras: int = None
     interpolate_poses: bool = False
 
     def __post_init__(self):
@@ -240,6 +240,10 @@ class InterfaceAdaptorConfig:
         camera_folders: t.List[Path] = [
             self.slam_json_path.parent / x for x in slam_json["camSerial"]
         ]
+
+        # Set number of cameras
+        self.num_cameras = len(camera_folders)
+        
         camera_json_paths: t.List[Path] = [x / "camMeta.json" for x in camera_folders]
 
         try:
@@ -342,8 +346,8 @@ class InterfaceAdaptorConfig:
                 for x in timestamp_batch
             }
             
-            # only add the data if all 4 cameras caputred an image at that timestamp
-            if len(cur_data["imgName"]) == 4:
+            # only add the data if all cameras caputred an image at that timestamp
+            if len(cur_data["imgName"]) == self.num_cameras:
                 data.append(cur_data)
 
         with open(self.output_path, "w") as f:
