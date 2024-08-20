@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import json
-import typing as t
-from dataclasses import dataclass
 from multiprocessing.dummy import Pool
-from pathlib import Path
 
 import cv2
+import json
 import numpy as np
+import typing as t
+from dataclasses import dataclass
 from loguru import logger
+from pathlib import Path
 from tqdm import tqdm
 
 
@@ -67,7 +67,9 @@ class UndistortConfig:
             # add an extension of .png
             output_path = output_path.parent / (output_path.name + ".png")
             # Save the undistorted image
-            cv2.imwrite(output_path.as_posix(), undistorted_mask * 255)
+            cv2.imwrite(
+                output_path.as_posix(), ((1 - undistorted_mask) * 255).astype(np.uint8)
+            )
 
     def main(self):
         with open(self.cam_json, "r") as file:
@@ -106,7 +108,7 @@ def _iterate_camera(
 def undistort_folder(
     input_dir: Path,
     output_dir: Path,
-    output_mask_dir: Path,
+    output_mask_dir: Path | None,
     image_extension: str = "png",
     converted_meta_json_path: Path | None = None,
     enlarge_factor: float = 1,
@@ -140,7 +142,7 @@ def undistort_folder(
         new_K = UndistortConfig(
             input_dir=camera_folder_path,
             output_dir=output_dir / camera_name,
-            output_mask_dir=output_mask_dir / camera_name,
+            output_mask_dir=output_mask_dir / camera_name if output_mask_dir else None,
             cam_json=camera_json_path,
             image_extension=image_extension,
             key_frame_list=key_frame_list,
@@ -148,3 +150,19 @@ def undistort_folder(
         ).main()
         new_camera_intrinsic[camera_name] = new_K.tolist()
     return new_camera_intrinsic
+
+
+def update_meta_json(meta_path: Path, enlarge_factor: float):
+    assert meta_path.exists(), meta_path
+    with open(meta_path, "r") as file:
+        _meta_data = json.load(file)
+
+    calibration_info = _meta_data["calibrationInfo"]
+    for camera_name, camera_info in calibration_info.items():
+        intrinsic = camera_info["intrinsics"]["camera_matrix"]
+        intrinsic[0] /= enlarge_factor
+        intrinsic[4] /= enlarge_factor
+        camera_info["intrinsics"]["camera_matrix"] = intrinsic
+
+    with open(meta_path, "w") as file:
+        json.dump(_meta_data, file, indent=4)
