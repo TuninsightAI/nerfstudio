@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -225,7 +225,7 @@ class InterfaceAdaptorConfig:
 
     output_path: Path
     
-    num_cameras: int = None
+    num_cameras: int = field(init=False)    
     interpolate_poses: bool = False
 
     def __post_init__(self):
