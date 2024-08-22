@@ -108,7 +108,7 @@ def _iterate_camera(
 def undistort_folder(
     input_dir: Path,
     output_dir: Path,
-    output_mask_dir: Path | None,
+    output_mask_dir: Path | None = None,
     image_extension: str = "png",
     converted_meta_json_path: Path | None = None,
     enlarge_factor: float = 1,

@@ -68,13 +68,14 @@ def compute_correspondence_epipolar_error(
         The epipolar error for each correspondence.
     """
     points1_h = torch.cat([points1, torch.ones_like(points1[..., :1])], dim=-1)
+    points2_h = torch.cat([points2, torch.ones_like(points2[..., :1])], dim=-1)
 
     # Compute the epipolar lines in the second image.
     epipolar_lines = fundamental_matrix @ points1_h.transpose(-1, -2)
     epipolar_lines /= torch.norm(epipolar_lines[..., :2], dim=-1, keepdim=True)
 
     # Compute the epipolar error.
-    return torch.cross(points2, epipolar_lines, dim=-1).norm(dim=-1)
+    return torch.cross(points2_h, epipolar_lines, dim=-1).norm(dim=-1)
 
 
 def estimate_fundamental_matrix(
