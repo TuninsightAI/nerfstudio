@@ -79,7 +79,7 @@ class ImagePairMatchingConfig:
                 normalize=False,
             )
             kps = torch.cat(kps, dim=1).cpu().numpy()
-            camera_name = image_folder.parent.name
+            camera_name = image_folder.name
             first_image_name = image_pair[0].stem
             second_image_name = image_pair[1].stem
 
