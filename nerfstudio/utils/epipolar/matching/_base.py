@@ -1,7 +1,13 @@
+import sys
 import typing as t
 from abc import ABCMeta, abstractmethod
+
 from jaxtyping import Float
 from torch import Tensor
+
+from nerfstudio import THIRD_PARTY_PATH
+
+sys.path.insert(0, str(THIRD_PARTY_PATH.parent))
 
 
 class _MatchInterface(metaclass=ABCMeta):
