@@ -91,8 +91,6 @@ class ImagePairMatchingConfig:
                 }
             )
         results_pd = pd.DataFrame(results)
-        if self.save_path is not None:
-            results_pd.to_pickle(self.save_path)
         return results_pd
 
     def main(self):
@@ -121,7 +119,10 @@ class ImagePairMatchingConfig:
             folder_results.append(
                 self._main(image_folder=image_folder, mask_folder=mask_folder)
             )
-        return pd.concat(folder_results, axis=0).reset_index(drop=True)
+        results_pd = pd.concat(folder_results, axis=0).reset_index(drop=True)
+        if self.save_path is not None:
+            results_pd.to_pickle(self.save_path)
+        return results_pd
 
     @staticmethod
     def pairwise(iterable: t.Iterable[t.Any]) -> t.Iterator[t.Tuple[t.Any, t.Any]]:
