@@ -1,6 +1,7 @@
 import typing as t
 from functools import lru_cache
-from jaxtyping import Float
+
+from jaxtyping import Float, Bool
 from torch import Tensor
 from torchvision.transforms import Grayscale
 
@@ -20,6 +21,8 @@ class LoFTRMatching(_MatchInterface):
     def predict_correspondence(
         prev_image: Float[Tensor, "3 H W"],
         next_image: Float[Tensor, "3 H W"],
+        prev_mask: Float[Tensor, "H W"] | None = None,
+        next_mask: Float[Tensor, "H W"] | None = None,
         *,
         threshold=0.0,
         normalize=True,
@@ -38,8 +41,21 @@ class LoFTRMatching(_MatchInterface):
             }
         )
         mask = matching["confidence"] > threshold
-        keypoints0 = matching["keypoints0"][mask]
-        keypoints1 = matching["keypoints1"][mask]
+        keypoints0 = matching["keypoints0"]
+        keypoints1 = matching["keypoints1"]
+
+        if prev_mask is not None:
+            # check the image size and mask size
+            assert prev_mask.shape == size
+            mask = mask & LoFTRMatching._filter_correspondences_based_on_mask(
+                keypoints0, prev_mask
+            )
+        if next_mask is not None:
+            mask = mask & LoFTRMatching._filter_correspondences_based_on_mask(
+                keypoints1, next_mask
+            )
+        keypoints0 = keypoints0[mask]
+        keypoints1 = keypoints1[mask]
 
         if normalize:
             keypoints0[:, 0] = 2 * keypoints0[:, 0] / (size[1] - 1) - 1
@@ -53,3 +69,11 @@ class LoFTRMatching(_MatchInterface):
             keypoints1.contiguous(),
             matching["confidence"][mask],
         )
+
+    @staticmethod
+    def _filter_correspondences_based_on_mask(
+        keypoints: Float[Tensor, "N 2"], mask: Float[Tensor, "H W"]
+    ) -> Bool[Tensor, "N 2"]:
+        mask = mask > 0.5
+        keypoints = keypoints.round().long()
+        return mask[keypoints[:, 1], keypoints[:, 0]].bool()
