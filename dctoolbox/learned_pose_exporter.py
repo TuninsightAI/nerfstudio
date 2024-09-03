@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from nerfstudio.data.utils.colmap_parsing_utils import rotmat2qvec
 
-def update_cam_meta(cam_meta_path: Path, c2ws_path: Path, intrinsics_path: Path, convert_to_pose: bool =True):
+def update_cam_meta(cam_meta_path: Path, c2ws_path: Path, intrinsics_path: Path, output_dir: Path, convert_to_pose: bool =True):
     """
     Update the camMeta.json file with learned intrinsic and extrinsic data.
 
@@ -11,6 +11,7 @@ def update_cam_meta(cam_meta_path: Path, c2ws_path: Path, intrinsics_path: Path,
         cam_meta_path (Path): Path to the camMeta.json file.
         c2ws_path (Path): Path to the c2ws.json file.
         intrinsics_path (Path): Path to the intrinsics.json file.
+        output_dir (Path): Path to the output directory to store the updated camMeta file.
         convert_to_pose (bool): Convert the 4x4 transformation matrix to pose parameters (default: True).
     
     """
@@ -83,7 +84,7 @@ def update_cam_meta(cam_meta_path: Path, c2ws_path: Path, intrinsics_path: Path,
                 data['c2w'] = transformed_c2w.tolist()  # Convert to list
     
     # Step 5: Define the output file path using the camera serial number
-    output_file_path = Path(f"{cam_serial}_camMeta.json")
+    output_file_path = output_dir / f"{cam_serial}_camMeta.json"
     
     # Step 6: Write back the modified camMeta to the new file
     with output_file_path.open('w') as file:
@@ -91,7 +92,7 @@ def update_cam_meta(cam_meta_path: Path, c2ws_path: Path, intrinsics_path: Path,
     
     print(f"Updated file saved as: {output_file_path}")
 
-def update_all_cam_meta(raw_dir: str, c2ws_path: str, intrinsics_path: str, convert_to_pose: bool =True):
+def update_all_cam_meta(raw_dir: str, c2ws_path: str, intrinsics_path: str, output_dir: str, convert_to_pose: bool =True):
     """
     Update all camMeta.json files in a directory with learned intrinsic and extrinsic data.
 
@@ -99,6 +100,7 @@ def update_all_cam_meta(raw_dir: str, c2ws_path: str, intrinsics_path: str, conv
         raw_dir (str): Path to the raw directory containing the camMeta.json files.
         c2ws_path (str): Path to the c2ws.json file.
         intrinsics_path (str): Path to the intrinsics.json file.
+        output_dir (str): Path to the output directory to store the updated camMeta files.
         convert_to_pose (bool): Convert the 4x4 transformation matrix to pose parameters (default: True).
     
     """
@@ -118,13 +120,19 @@ def update_all_cam_meta(raw_dir: str, c2ws_path: str, intrinsics_path: str, conv
         # load 4 camMeta folder names
         cam_meta_files = [raw_dir / cam_serial / 'camMeta.json' for cam_serial in slam_meta['camSerial']]
 
+    # Create a new directioy to store the updated camMeta files
+    output_dir = Path(output_dir) / 'updated_camMeta'
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # Loop through each camMeta file and update it
     for cam_meta_path in cam_meta_files:
-        update_cam_meta(cam_meta_path, c2ws_path, intrinsics_path, convert_to_pose)
+        update_cam_meta(cam_meta_path, c2ws_path, intrinsics_path, output_dir, convert_to_pose)
 
 if __name__ == '__main__':
 
     update_all_cam_meta('/home/vi/workspace/dConstruct/data/02-09-2024-pixel_lvl1_water2_resampled_prune_x2_EXTRA/raw/',
                             '/home/vi/workspace/dConstruct/data/02-09-2024-pixel_lvl1_water2_resampled_prune_x2_EXTRA/outputs/git_8e2af30/export/c2ws.json',
-                            '/home/vi/workspace/dConstruct/data/02-09-2024-pixel_lvl1_water2_resampled_prune_x2_EXTRA/outputs/git_8e2af30/export/intrinsics.json', convert_to_pose=True)
+                            '/home/vi/workspace/dConstruct/data/02-09-2024-pixel_lvl1_water2_resampled_prune_x2_EXTRA/outputs/git_8e2af30/export/intrinsics.json',
+                            '/home/vi/workspace/dConstruct/data/02-09-2024-pixel_lvl1_water2_resampled_prune_x2_EXTRA/outputs/git_8e2af30/export/', 
+                            convert_to_pose=True)
 
