@@ -1,7 +1,8 @@
-import moviepy.video.io.ImageSequenceClip
-import tyro
 from dataclasses import dataclass
 from pathlib import Path
+
+import moviepy.video.io.ImageSequenceClip
+import tyro
 
 
 @dataclass(kw_only=True)
@@ -24,7 +25,7 @@ class ImageToVideoConfig:
         )
         self.output_dir.mkdir(exist_ok=True, parents=True)
         movie_clip.write_videofile(
-            str(self.output_dir / (self.video_name + self.output_format)), codec="h264"
+            str(self.output_dir / (self.video_name + self.output_format)),
         )
 
 
