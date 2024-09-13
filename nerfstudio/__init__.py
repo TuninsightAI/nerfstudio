@@ -11,3 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from pathlib import Path
+
+THIRD_PARTY_PATH = Path(__file__).absolute().parent.parent / "third_party"
+
+CHECKPOINT_PATH = Path(__file__).absolute().parent.parent / "dctoolbox/checkpoints"
