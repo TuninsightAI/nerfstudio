@@ -55,7 +55,8 @@ class ImagePairMatchingConfig:
 
         results = []
         for image_pair, mask_pair in tqdm(
-            zip(self.pairwise(image_paths), self.pairwise(mask_paths))
+            zip(self.pairwise(image_paths), self.pairwise(mask_paths)),
+            total=len(image_paths) - 1,
         ):
             *kps, confidence = LoFTRMatching.predict_correspondence(
                 prev_image=self._read_image_to_tensor(

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from multiprocessing.dummy import Pool
-
-import cv2
 import json
-import numpy as np
 import typing as t
 from dataclasses import dataclass
-from loguru import logger
+from multiprocessing.dummy import Pool
 from pathlib import Path
+
+import cv2
+import numpy as np
+from loguru import logger
 from tqdm import tqdm
 
 
@@ -136,7 +136,7 @@ def undistort_folder(
             with open(converted_meta_json_path, "r") as file:
                 data = json.load(file)
             key_frame_list = _iterate_camera(data["data"], camera_name)
-            logger.info(f"Key frame list: {key_frame_list[:5]}")
+            # logger.info(f"Key frame list: {key_frame_list[:5]}")
             # Load the camera matrix and distortion coefficients from the file
 
         new_K = UndistortConfig(
