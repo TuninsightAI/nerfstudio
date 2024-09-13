@@ -42,7 +42,7 @@ class HeadMaskGeneratorConfig:
                 w_factor = 0.25
             elif self.enlarge_factor == 1.5:
                 h_factor = 0.73
-                w_factor = 0.35
+                w_factor = 0.4
             else:
                 raise ValueError
             if "DECXIN2023012348" in str(f):
