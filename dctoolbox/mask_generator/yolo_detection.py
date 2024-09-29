@@ -19,7 +19,7 @@ def suppress():
 
 def predict_given_image_path(model, img_path: Path, margin=0.2) -> np.ndarray:
     with suppress():
-        result, *_ = model(img_path.as_posix())  # predict on an image
+        result, *_ = model(img_path.as_posix(),  verbose=False)  # predict on an image
 
     # Process results list
     boxes = result.boxes  # Boxes object for bounding box outputs
