@@ -36,7 +36,7 @@ class ExposeConfig:
                 cur_image_path = futures[future]
                 blurry_score = future.result()
 
-    def _apply_exposure_correction(self, image_path: Path, save_path: Path) -> float:
+    def _apply_exposure_correction(self, image_path: Path, save_path: Path):
         assert image_path.exists() and image_path.is_file(), image_path
 
         rgb_img = cv2.imread(image_path.as_posix())
