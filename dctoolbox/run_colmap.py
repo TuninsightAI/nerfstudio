@@ -372,7 +372,7 @@ def model_alignment(database_path: Path, sparse_dir: Path, verbose: bool = False
     CONSOLE.log("[bold green]:tada: Done COLMAP model alignment.")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class _ColmapRunner:
     data_dir: Path
     image_folder_name: str = "images"
@@ -383,7 +383,7 @@ class _ColmapRunner:
     ] = "exhaustive"
 
     prior_injection: bool = False
-    meta_file: Path | None = None
+    meta_file: t.Optional[Path] = None
     image_extension: t.Literal["png", "jpg", "jpeg"] = "png"
 
     rig_bundle_adjustment: bool = False
@@ -449,7 +449,7 @@ class _ColmapRunner:
         feature_matching(self.matching_type, database_path, verbose=False)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ColmapRunnerFromScratch(_ColmapRunner):
     model_alignment: bool = False
     use_glomap: bool = False
@@ -499,11 +499,12 @@ class ColmapRunnerFromScratch(_ColmapRunner):
             model_alignment(database_path, exp_dir / "sparse" / "0", verbose=False)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ColmapRunnerWithPointTriangulation(_ColmapRunner):
+    meta_file: Path
+
     refinement_time: int = 1
     prior_injection: tyro.conf.Suppress[bool] = True
-    meta_file: Path
 
     def __post_init__(self):
         assert self.prior_injection is True
@@ -550,8 +551,10 @@ class ColmapRunnerWithPointTriangulation(_ColmapRunner):
 if __name__ == "__main__":
     config = tyro.extras.subcommand_cli_from_dict(
         {
-            "colmap": ColmapRunnerFromScratch,
-            "triangulation": ColmapRunnerWithPointTriangulation,
+            "colmap": tyro.conf.FlagConversionOff[ColmapRunnerFromScratch],
+            "triangulation": tyro.conf.FlagConversionOff[
+                ColmapRunnerWithPointTriangulation
+            ],
         }
     )
     config.main()
