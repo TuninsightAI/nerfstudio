@@ -33,6 +33,8 @@ class ImagePairMatchingConfig:
     """mask extension, choose from png, jpeg, jpg, jpeg.png"""
     save_path: Path | None = None
     """save path for the matching points, as a pandas file"""
+    match_interval: int = 1
+    """interval between images"""
 
     @torch.no_grad()
     def _main(self, *, image_folder: Path, mask_folder: Path | None):
@@ -125,14 +127,11 @@ class ImagePairMatchingConfig:
             results_pd.to_pickle(self.save_path)
         return results_pd
 
-    @staticmethod
-    def pairwise(iterable: t.Iterable[t.Any]) -> t.Iterator[t.Tuple[t.Any, t.Any]]:
-        it = iter(iterable)
-        a = next(it, None)
-
-        for b in it:
-            yield (a, b)
-            a = b
+    def pairwise(
+        self, iterable: t.Iterable[t.Any]
+    ) -> t.Iterator[t.Tuple[t.Any, t.Any]]:
+        for a, b in zip(iterable, iterable[self.match_interval :]):
+            yield a, b
 
     @staticmethod
     def _read_image_to_tensor(
@@ -167,5 +166,6 @@ if __name__ == "__main__":
         save_path=Path(
             "/home/jizong/Workspace/dConstruct/data/2024-08-26-fix-intrinisc/subregion/matching_points.pkl"
         ),
+        match_interval=2,
     ).main()
     rich.print(pairwise_df.head(n=100))
