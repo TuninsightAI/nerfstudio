@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 import typing as t
+import warnings
 from dataclasses import dataclass
 from multiprocessing.dummy import Pool
 from pathlib import Path
 
 import cv2
 import numpy as np
+from jaxtyping import Float
 from loguru import logger
 from tqdm import tqdm
+
+from dctoolbox.double_sphere_camera.ds_camera import DSCamera
 
 
 @dataclass(kw_only=True)
@@ -29,7 +33,9 @@ class UndistortConfig:
         if self.output_mask_dir is not None:
             self.output_mask_dir.mkdir(exist_ok=True, parents=True)
 
-    def process_image(self, filename, K, D):
+    def process_image(
+        self, filename: Path, K: Float[np.ndarray, "3 3"], D: Float[np.ndarray, "4"]
+    ) -> None:
         relative_path = str(filename.relative_to(self.input_dir))
         if self.key_frame_list is not None and relative_path not in self.key_frame_list:
             return
@@ -71,7 +77,7 @@ class UndistortConfig:
                 output_path.as_posix(), ((1 - undistorted_mask) * 255).astype(np.uint8)
             )
 
-    def main(self):
+    def main(self) -> Float[np.ndarray, "3 3"]:
         with open(self.cam_json, "r") as file:
             data = json.load(file)
             # Load the camera matrix and distortion coefficients from the file
@@ -96,6 +102,71 @@ class UndistortConfig:
         return new_K
 
 
+@dataclass(kw_only=True)
+class UndistortDoubleSphereConfig(UndistortConfig):
+    def main(self) -> Float[np.ndarray, "3 3"]:
+        with open(self.cam_json, "r") as file:
+            data = json.load(file)
+        # in double sphere camera, the K has 6 parameters
+        K = np.array(
+            data["calibration"]["intrinsics"]["camera_matrix"], dtype=np.float64
+        ).reshape(6)
+
+        images = sorted(self.input_dir.glob(f"*.{self.image_extension}"))
+        with Pool(32) as pool:
+            workers = pool.imap_unordered(
+                lambda filename: self.process_image(filename, K), images
+            )
+            for _ in tqdm(workers, total=len(images), desc="Processing images"):
+                pass
+
+        new_K = np.eye(3)
+        new_K[0, 0] = K[2] / self.enlarge_factor
+        new_K[1, 1] = K[3] / self.enlarge_factor
+        new_K[0, 2] = K[4] / self.enlarge_factor
+        new_K[1, 2] = K[5] / self.enlarge_factor
+        return new_K
+
+    def process_image(
+        self, filename: Path, K: Float[np.ndarray, "6"], **kwargs
+    ) -> None:
+        relative_path = str(filename.relative_to(self.input_dir))
+        if self.key_frame_list is not None and relative_path not in self.key_frame_list:
+            return
+
+        img = cv2.imread(str(filename))
+
+        # Get the dimensions of the image
+        height, width = img.shape[:2]
+
+        camera = DSCamera(
+            fx=float(K[2]),
+            fy=float(K[3]),
+            cx=float(K[4]),
+            cy=float(K[5]),
+            xi=float(K[0]),
+            alpha=float(K[1]),
+            height=height,
+            width=width,
+        )
+        undistorted_img = camera.to_perspective(img, zoom_factor=self.enlarge_factor)
+
+        output_path = self.output_dir / filename.relative_to(self.input_dir)
+        # Save the undistorted image
+        cv2.imwrite(output_path.as_posix(), undistorted_img)
+        if self.output_mask_dir is not None:
+            undistorted_mask = camera.to_perspective(
+                np.ones_like(img), zoom_factor=self.enlarge_factor
+            )
+            output_path = self.output_mask_dir / filename.relative_to(self.input_dir)
+            # add an extension of .png
+            output_path = output_path.parent / (output_path.name + ".png")
+            # Save the undistorted image
+            cv2.imwrite(
+                output_path.as_posix(), ((1 - undistorted_mask) * 255).astype(np.uint8)
+            )
+
+
 def _iterate_camera(
     data_frames: t.List[t.Dict[str, t.Any]], camera_name: str
 ) -> t.List[str]:
@@ -112,6 +183,7 @@ def undistort_folder(
     image_extension: str = "png",
     converted_meta_json_path: Path | None = None,
     enlarge_factor: float = 1,
+    double_sphere_camera: bool = False,
 ):
     """
     .
@@ -139,20 +211,37 @@ def undistort_folder(
             # logger.info(f"Key frame list: {key_frame_list[:5]}")
             # Load the camera matrix and distortion coefficients from the file
 
-        new_K = UndistortConfig(
-            input_dir=camera_folder_path,
-            output_dir=output_dir / camera_name,
-            output_mask_dir=output_mask_dir / camera_name if output_mask_dir else None,
-            cam_json=camera_json_path,
-            image_extension=image_extension,
-            key_frame_list=key_frame_list,
-            enlarge_factor=enlarge_factor,
-        ).main()
+        if double_sphere_camera:
+            logger.info("Using double sphere camera")
+            new_K = UndistortDoubleSphereConfig(
+                input_dir=camera_folder_path,
+                output_dir=output_dir / camera_name,
+                output_mask_dir=output_mask_dir / camera_name
+                if output_mask_dir
+                else None,
+                cam_json=camera_json_path,
+                image_extension=image_extension,
+                key_frame_list=key_frame_list,
+                enlarge_factor=enlarge_factor,
+            ).main()
+        else:
+            new_K = UndistortConfig(
+                input_dir=camera_folder_path,
+                output_dir=output_dir / camera_name,
+                output_mask_dir=output_mask_dir / camera_name
+                if output_mask_dir
+                else None,
+                cam_json=camera_json_path,
+                image_extension=image_extension,
+                key_frame_list=key_frame_list,
+                enlarge_factor=enlarge_factor,
+            ).main()
         new_camera_intrinsic[camera_name] = new_K.tolist()
     return new_camera_intrinsic
 
 
 def update_meta_json(meta_path: Path, enlarge_factor: float):
+    warnings.warn("This function is deprecated", DeprecationWarning)
     assert meta_path.exists(), meta_path
     with open(meta_path, "r") as file:
         _meta_data = json.load(file)
