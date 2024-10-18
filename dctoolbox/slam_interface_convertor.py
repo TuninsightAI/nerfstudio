@@ -76,7 +76,7 @@ class Extrinsic:
             raise ValueError(f"format_ must be '3x4' or '4x4' not {format_}")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CameraInfo:
     fx: float
     fy: float
@@ -91,6 +91,7 @@ class CameraInfo:
     extrinsic: t.Optional[Extrinsic] = None
 
     dataframe: pd.DataFrame | None = None
+    camera_type: t.Literal["KalibrDoubleSphere", "OpenCVFisheye"]
 
 
 def read_camera_info(camera_json_path: Path) -> CameraInfo:
@@ -100,18 +101,39 @@ def read_camera_info(camera_json_path: Path) -> CameraInfo:
         name = cur_camera_json["calibration"]["cam_serial"]
     except KeyError:
         name = cur_camera_json["calibration"]["camSerial"]
-    cur_camera_info = CameraInfo(
-        fx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][0],
-        fy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][4],
-        cx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][2],
-        cy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][5],
-        width=cur_camera_json["calibration"]["intrinsics"]["width"],
-        height=cur_camera_json["calibration"]["intrinsics"]["height"],
-        name=name,
-        distortion_coeffs=cur_camera_json["calibration"]["intrinsics"][
-            "distortion_coeffs"
-        ],
-    )
+
+    camera_type = cur_camera_json["calibration"]["intrinsics"]["camera_type"]
+    assert camera_type in ["KalibrDoubleSphere", "OpenCVFisheye"]
+    if camera_type == "openCVFisheye":
+        cur_camera_info = CameraInfo(
+            fx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][0],
+            fy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][4],
+            cx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][2],
+            cy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][5],
+            width=cur_camera_json["calibration"]["intrinsics"]["width"],
+            height=cur_camera_json["calibration"]["intrinsics"]["height"],
+            name=name,
+            distortion_coeffs=cur_camera_json["calibration"]["intrinsics"][
+                "distortion_coeffs"
+            ],
+            camera_type=camera_type,
+        )
+    elif camera_type == "KalibrDoubleSphere":
+        cur_camera_info = CameraInfo(
+            fx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][2],
+            fy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][3],
+            cx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][4],
+            cy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][5],
+            width=cur_camera_json["calibration"]["intrinsics"]["width"],
+            height=cur_camera_json["calibration"]["intrinsics"]["height"],
+            name=name,
+            distortion_coeffs=cur_camera_json["calibration"]["intrinsics"][
+                "distortion_coeffs"
+            ],
+            camera_type=camera_type,
+        )
+    else:
+        raise TypeError(f"camera_type {camera_type} not supported")
     try:
         cur_camera_info.extrinsic = Extrinsic(
             qx=cur_camera_json["calibration"]["extrinsics"]["qx"],
@@ -297,6 +319,7 @@ class InterfaceAdaptorConfig:
                     height=cur_camera_info.height,
                     width=cur_camera_info.width,
                     distortion_coeffs=cur_camera_info.distortion_coeffs,
+                    camera_type=cur_camera_info.camera_type,
                 ),
                 qw=cur_camera_info.extrinsic.qw,
                 qx=cur_camera_info.extrinsic.qx,
