@@ -177,13 +177,13 @@ def _iterate_camera(
 
 
 def undistort_folder(
+    *,
     input_dir: Path,
     output_dir: Path,
     output_mask_dir: Path | None = None,
     image_extension: str = "png",
-    converted_meta_json_path: Path | None = None,
+    converted_meta_json_path: Path,
     enlarge_factor: float = 1,
-    double_sphere_camera: bool = False,
 ):
     """
     .
@@ -210,8 +210,13 @@ def undistort_folder(
             key_frame_list = _iterate_camera(data["data"], camera_name)
             logger.info(f"Key frame list: {key_frame_list[:5]}")
             # Load the camera matrix and distortion coefficients from the file
+        with open(camera_json_path, "r") as _cam_config:
+            camera_type = json.load(_cam_config)["calibration"]["intrinsics"][
+                "camera_type"
+            ]
+        assert camera_type in ["OpenCVFisheye", "KalibrDoubleSphere"], camera_type
 
-        if double_sphere_camera:
+        if camera_type == "KalibrDoubleSphere":
             logger.info("Using double sphere camera")
             new_K = UndistortDoubleSphereConfig(
                 input_dir=camera_folder_path,
@@ -224,7 +229,7 @@ def undistort_folder(
                 key_frame_list=key_frame_list,
                 enlarge_factor=enlarge_factor,
             ).main()
-        else:
+        elif camera_type == "OpenCVFisheye":
             new_K = UndistortConfig(
                 input_dir=camera_folder_path,
                 output_dir=output_dir / camera_name,
@@ -236,6 +241,8 @@ def undistort_folder(
                 key_frame_list=key_frame_list,
                 enlarge_factor=enlarge_factor,
             ).main()
+        else:
+            raise ValueError(f"Unknown camera type: {camera_type}")
         new_camera_intrinsic[camera_name] = new_K.tolist()
     return new_camera_intrinsic
 
