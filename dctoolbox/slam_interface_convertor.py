@@ -104,7 +104,7 @@ def read_camera_info(camera_json_path: Path) -> CameraInfo:
 
     camera_type = cur_camera_json["calibration"]["intrinsics"]["camera_type"]
     assert camera_type in ["KalibrDoubleSphere", "OpenCVFisheye"]
-    if camera_type == "openCVFisheye":
+    if camera_type == "OpenCVFisheye":
         cur_camera_info = CameraInfo(
             fx=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][0],
             fy=cur_camera_json["calibration"]["intrinsics"]["camera_matrix"][4],
