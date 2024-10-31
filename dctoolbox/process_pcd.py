@@ -64,7 +64,8 @@ class ProcessPCDConfig:
             shutil.copy(self.input_path, new_path)
             self.input_path = new_path
             copied_pcd = True
-
+        elif self.input_path.suffix == ".ply":
+            pass
         pcd = o3d.io.read_point_cloud(self.input_path.as_posix())
         if self.convert_to_opencv:
             pcd = convert_slam_pcd_to_opencv(pcd)

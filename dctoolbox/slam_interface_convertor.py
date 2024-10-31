@@ -251,7 +251,7 @@ class InterfaceAdaptorConfig:
     interpolate_poses: bool = False
 
     def __post_init__(self):
-        assert self.slam_json_path.exists(), "slam_json_path must be provided"
+        assert self.slam_json_path.exists(), f"{self.slam_json_path} must be provided"
         assert self.output_path.suffix == ".json", "output_path must be a json file"
         self.output_path.parent.mkdir(exist_ok=True, parents=True)
 
